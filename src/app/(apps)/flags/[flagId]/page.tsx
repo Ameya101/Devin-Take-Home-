@@ -25,11 +25,19 @@ const historyColumns: DataTableColumn[] = [
   { key: "change", header: "Change" },
 ];
 
-export default async function FlagDetailPage({ params }: { params: Promise<{ flagId: string }> }) {
+export default async function FlagDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ flagId: string }>;
+  searchParams: Promise<{ historyBefore?: string }>;
+}) {
   const { flagId } = await params;
-  const detail = await orForbidden(getFlagDetail(flagId));
+  const cursor = Number((await searchParams).historyBefore);
+  const historyBefore = Number.isInteger(cursor) && cursor > 0 ? cursor : undefined;
+  const detail = await orForbidden(getFlagDetail(flagId, historyBefore));
   if (!detail) notFound();
-  const { flag, changeRequests, history } = detail;
+  const { flag, changeRequests, history, olderCursor } = detail;
   const envs = ENVIRONMENTS.map((name) => flag.environments.find((e) => e.environment === name)).filter((e) => e !== undefined);
   const pendingKill = changeRequests.some((c) => c.kind === "kill_switch" && c.approval?.status === "pending");
 
@@ -163,6 +171,10 @@ export default async function FlagDetailPage({ params }: { params: Promise<{ fla
         </CardHeader>
         <CardContent>
           <DataTable columns={historyColumns} rows={historyRows} pageSize={10} filterPlaceholder="Filter history…" emptyMessage="No history." />
+          <div className="mt-3 flex gap-4 text-sm">
+            {historyBefore && <Link href={`/flags/${flag.id}`} className="underline">← Newest events</Link>}
+            {olderCursor && <Link href={`/flags/${flag.id}?historyBefore=${olderCursor}`} className="underline">Older events →</Link>}
+          </div>
         </CardContent>
       </Card>
     </div>

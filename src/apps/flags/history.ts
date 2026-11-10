@@ -16,6 +16,8 @@ const LABELS: Record<string, string> = {
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
 const asState = (v: Obj): EnvState => ({ enabled: Boolean(v.enabled), rolloutPercent: Number(v.rolloutPercent ?? 0) });
+/** Like formatState, but keeps the stored rollout of a disabled flag so rollout edits while off stay visible. */
+const formatStored = (s: EnvState) => (s.enabled ? formatState(s) : `off (${s.rolloutPercent}% saved)`);
 
 /** One line per audit event for the per-flag history table. */
 export function summarizeFlagEvent(e: Pick<AuditEvent, "action" | "before" | "after" | "metadata">): {
@@ -35,11 +37,11 @@ export function summarizeFlagEvent(e: Pick<AuditEvent, "action" | "before" | "af
       break;
     case "flag.env_updated":
     case "flag.kill_switch_executed":
-      change = `${formatState(asState(before))} → ${formatState(asState(after))}${meta.route === "approval" ? " (approved)" : ""}`;
+      change = `${formatStored(asState(before))} → ${formatStored(asState(after))}${meta.route === "approval" ? " (approved)" : ""}`;
       break;
     case "flag.prod_change_requested":
     case "flag.kill_switch_requested":
-      change = `${formatState({ enabled: Boolean(after.fromEnabled), rolloutPercent: Number(after.fromRolloutPercent) })} → ${formatState({ enabled: Boolean(after.toEnabled), rolloutPercent: Number(after.toRolloutPercent) })}${after.reason ? ` · “${String(after.reason)}”` : ""}`;
+      change = `${formatStored({ enabled: Boolean(after.fromEnabled), rolloutPercent: Number(after.fromRolloutPercent) })} → ${formatStored({ enabled: Boolean(after.toEnabled), rolloutPercent: Number(after.toRolloutPercent) })}${after.reason ? ` · “${String(after.reason)}”` : ""}`;
       break;
     case "flag.prod_change_rejected":
     case "flag.kill_switch_rejected":

@@ -15,7 +15,8 @@ import { ConflictError, ForbiddenError, ValidationError } from "@/kit/errors";
 import { can } from "@/kit/rbac/can";
 import { FLAG_KILL_SWITCH_APPROVAL, FLAG_PROD_CHANGE_APPROVAL } from "./config";
 import { canApplyProdChange, effectiveRollout, formatState, routeFlagChange } from "./policy";
-import { getFlagDetail, listFlags } from "./queries";
+import { summarizeFlagEvent } from "./history";
+import { getFlagDetail, HISTORY_PAGE_SIZE, listFlags } from "./queries";
 import { createFlagSchema, directChangeFormSchema } from "./schema";
 import { createFlag, requestKillSwitch, requestProdChange, setDirectState } from "./service";
 
@@ -195,5 +196,39 @@ describe("flag changes", () => {
     expect(detail?.changeRequests[0].approval?.status).toBe("executed");
     expect((await listFlags()).some((f) => f.id === flag.id)).toBe(true);
     expect(await audit.verifyChain()).toMatchObject({ ok: true });
+  });
+});
+
+describe("flag history", () => {
+  it("shows the stored rollout when a disabled flag's rollout changes", () => {
+    const e = { action: "flag.env_updated", before: { environment: "staging", enabled: false, rolloutPercent: 10 }, after: { environment: "staging", enabled: false, rolloutPercent: 70 }, metadata: { environment: "staging", route: "direct" } };
+    expect(summarizeFlagEvent(e).change).toBe("off (10% saved) → off (70% saved)");
+  });
+
+  it("audits releasing the pending slot when an approval is decided", async () => {
+    const maker = await makeUser("eng_admin");
+    const checker = await makeUser("eng_admin");
+    const flag = await createFlag(maker, { key: newKey(), description: "Slot release audit.", ownerTeam: "platform" });
+    const { approval, changeRequest } = await requestProdChange(maker, { flagId: flag.id, enabled: true, rolloutPercent: 5 });
+    await reject(approval.id, checker, "no");
+    const closed = await prisma.auditEvent.findFirstOrThrow({ where: { action: "flag.change_request_closed", entityId: changeRequest.id } });
+    expect(closed.before).toMatchObject({ pendingSlot: `${flag.id}:change` });
+    expect(closed.after).toMatchObject({ pendingSlot: null });
+  });
+
+  it("pages through the full history with a cursor", async () => {
+    const admin = await makeUser("eng_admin");
+    const flag = await createFlag(admin, { key: newKey(), description: "Lots of history.", ownerTeam: "platform" });
+    for (let i = 1; i <= HISTORY_PAGE_SIZE + 4; i++) {
+      await setDirectState(admin, { flagId: flag.id, environment: "staging", enabled: false, rolloutPercent: i });
+    }
+    vi.mocked(getCurrentUser).mockResolvedValue(admin);
+    const first = await getFlagDetail(flag.id);
+    expect(first!.history).toHaveLength(HISTORY_PAGE_SIZE);
+    expect(first!.olderCursor).not.toBeNull();
+    const second = await getFlagDetail(flag.id, first!.olderCursor!);
+    expect(second!.history).toHaveLength(5);
+    expect(second!.olderCursor).toBeNull();
+    expect(second!.history.at(-1)!.action).toBe("flag.created");
   });
 });

@@ -153,17 +153,37 @@ async function createProdRequest(
 }
 
 /** Frees the flag's pending slot once the approval is decided (runs inside the decision transaction). */
-async function releasePendingSlot(tx: Tx, approvalRequestId: string) {
-  await tx.flagChangeRequest.update({ where: { approvalRequestId }, data: { pendingSlot: null } });
+async function releasePendingSlot(tx: Tx, approvalRequestId: string, actor: SessionUser) {
+  const before = await tx.flagChangeRequest.findUniqueOrThrow({ where: { approvalRequestId } });
+  const after = await tx.flagChangeRequest.update({ where: { approvalRequestId }, data: { pendingSlot: null } });
+  await audit.record(tx, {
+    actor,
+    action: "flag.change_request_closed",
+    entityType: "FlagChangeRequest",
+    entityId: before.id,
+    before,
+    after,
+    metadata: { flagId: before.flagId, approvalRequestId },
+  });
 }
+
+/** SQLite rejects a transaction that read before another one wrote; retrying re-reads and hits the friendly check. */
+const isWriteContention = (err: unknown) =>
+  (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") ||
+  (err instanceof Error && /database is locked|SQLITE_BUSY|write conflict|deadlock/i.test(err.message));
 
 /** The pending slot's unique index makes "one pending request per flag and kind" hold even for concurrent requests. */
 async function withPendingSlot<T>(kind: FlagChangeKind, run: () => Promise<T>): Promise<T> {
-  try {
-    return await run();
-  } catch (err) {
-    if (!isUniqueViolation(err)) throw err;
-    throw new ConflictError(kind === "kill_switch" ? "A kill switch for this flag is already waiting for approval" : "This flag already has a prod change waiting for approval");
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new ConflictError(kind === "kill_switch" ? "A kill switch for this flag is already waiting for approval" : "This flag already has a prod change waiting for approval");
+      }
+      if (!isWriteContention(err) || attempt >= 5) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+    }
   }
 }
 
@@ -204,7 +224,7 @@ export async function executeProdChange(tx: Tx, payload: ProdChangePayload, appr
   }
   // A kill switch only turns prod off; it keeps whatever rollout prod has now (it may have changed since the request).
   const to = payload.kind === "kill_switch" ? { enabled: false, rolloutPercent: env.rolloutPercent } : payload.to;
-  await releasePendingSlot(tx, request.id);
+  await releasePendingSlot(tx, request.id, approver);
   const after = await applyState(tx, approver, env, to, payload.kind === "kill_switch" ? "flag.kill_switch_executed" : "flag.env_updated", {
     route: "approval",
     approvalRequestId: request.id,
@@ -215,7 +235,7 @@ export async function executeProdChange(tx: Tx, payload: ProdChangePayload, appr
 
 /** Approval onFailure(): execute() threw (e.g. prod changed since the request), so record that on the flag's history. */
 export async function recordProdChangeFailed(tx: Tx, payload: ProdChangePayload, approver: SessionUser, request: ApprovalRequest, error: unknown) {
-  await releasePendingSlot(tx, request.id);
+  await releasePendingSlot(tx, request.id, approver);
   await audit.record(tx, {
     actor: approver,
     action: payload.kind === "kill_switch" ? "flag.kill_switch_failed" : "flag.prod_change_failed",
@@ -229,7 +249,7 @@ export async function recordProdChangeFailed(tx: Tx, payload: ProdChangePayload,
 
 /** Approval onReject(): records the rejection on the flag's history. */
 export async function recordProdChangeRejected(tx: Tx, payload: ProdChangePayload, approver: SessionUser, request: ApprovalRequest) {
-  await releasePendingSlot(tx, request.id);
+  await releasePendingSlot(tx, request.id, approver);
   await audit.record(tx, {
     actor: approver,
     action: payload.kind === "kill_switch" ? "flag.kill_switch_rejected" : "flag.prod_change_rejected",

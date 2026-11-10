@@ -10,7 +10,9 @@ export const listFlags = withPermission("flags.view", async () => {
   return flags.map((f) => ({ ...f, pending: pending.filter((p) => p.flagId === f.id) }));
 });
 
-export const getFlagDetail = withPermission("flags.view", async (_user, flagId: string) => {
+export const HISTORY_PAGE_SIZE = 50;
+
+export const getFlagDetail = withPermission("flags.view", async (_user, flagId: string, historyBefore?: number) => {
   const flag = await prisma.featureFlag.findUnique({ where: { id: flagId }, include: { environments: true } });
   if (!flag) return null;
   const changeRequests = await prisma.flagChangeRequest.findMany({ where: { flagId }, orderBy: { createdAt: "desc" }, take: 20 });
@@ -19,11 +21,14 @@ export const getFlagDetail = withPermission("flags.view", async (_user, flagId: 
     include: { requestedBy: { select: { email: true } }, decidedBy: { select: { email: true } } },
   });
   const approvalById = new Map(approvals.map((a) => [a.id, a]));
-  const history = await loadEntityHistory(FLAG_ENTITY, flagId);
+  const page = await loadEntityHistory(FLAG_ENTITY, flagId, { limit: HISTORY_PAGE_SIZE + 1, before: historyBefore });
+  const history = page.slice(0, HISTORY_PAGE_SIZE);
+  const olderCursor = page.length > HISTORY_PAGE_SIZE ? history[history.length - 1].id : null;
   return {
     flag,
     changeRequests: changeRequests.map((c) => ({ ...c, approval: approvalById.get(c.approvalRequestId) ?? null })),
     history,
+    olderCursor,
   };
 });
 

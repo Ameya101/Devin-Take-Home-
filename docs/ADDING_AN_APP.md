@@ -107,8 +107,8 @@ export async function decideAction(_prev: ActionState, formData: FormData) {
 }
 ```
 
-Per-record history: `loadEntityHistory(entityType, entityId)` from `@/kit/audit/queries` returns that
-entity's audit events (newest first). It is not permission-checked, so call it from your own loader
+Per-record history: `loadEntityHistory(entityType, entityId, { limit, before })` from `@/kit/audit/queries` returns one
+page of that entity's audit events (newest first; pass the last id as `before` for the next page). It is not permission-checked, so call it from your own loader
 wrapped in `withPermission` with the app's view permission (see `src/apps/flags/queries.ts`).
 
 Route handlers: wrap with `withPermission` and adapt with `toRouteHandler` (see
