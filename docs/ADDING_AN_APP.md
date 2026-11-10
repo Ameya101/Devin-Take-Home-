@@ -107,6 +107,10 @@ export async function decideAction(_prev: ActionState, formData: FormData) {
 }
 ```
 
+Per-record history: `loadEntityHistory(entityType, entityId, { limit, before })` from `@/kit/audit/queries` returns one
+page of that entity's audit events (newest first; pass the last id as `before` for the next page). It is not permission-checked, so call it from your own loader
+wrapped in `withPermission` with the app's view permission (see `src/apps/flags/queries.ts`).
+
 Route handlers: wrap with `withPermission` and adapt with `toRouteHandler` (see
 `src/app/(kit)/admin/audit/export/route.ts`).
 
@@ -124,6 +128,9 @@ Route handlers: wrap with `withPermission` and adapt with `toRouteHandler` (see
      onFailure: (p, tx, { approver, error }) => releaseOverride(tx, p, approver, error), // optional; release reservations only if `error` proves nothing happened externally
    });
    ```
+
+   Set `urgent: true` on a type whose requests must jump the queue (e.g. a kill switch): its requests
+   are stored with `urgent = true`, listed first in "Waiting for me" and badged URGENT.
 
 3. Add `import "./kyc/approvals";` to `src/apps/approval-types.ts`.
 4. In the service, instead of writing directly, call `requestApproval(tx, { type, payload, requestedBy: user })`

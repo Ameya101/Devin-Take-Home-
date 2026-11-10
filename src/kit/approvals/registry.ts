@@ -15,6 +15,8 @@ export type ApprovalTypeDefinition<P> = {
   onReject?: (payload: P, tx: Tx, ctx: ApprovalContext) => Promise<void>;
   /** Optional hook run in the transaction that marks the request "failed". Only release reservations when `error` proves no side effect happened. */
   onFailure?: (payload: P, tx: Tx, ctx: ApprovalContext & { error: unknown }) => Promise<void>;
+  /** Urgent requests are sorted to the top of approvers' queues and badged. Default false. */
+  urgent?: boolean;
   /** Optional one-line human summary for the approvals queue. */
   describe?: (payload: P) => string;
 };

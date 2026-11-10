@@ -1,5 +1,6 @@
 import type { ApprovalRequest, Prisma } from "@prisma/client";
 import { audit } from "@/kit/audit/audit";
+import { logger } from "@/kit/log";
 import type { SessionUser } from "@/kit/auth/types";
 import { prisma, type Tx } from "@/kit/db";
 import { ConflictError, KitError, NotFoundError } from "@/kit/errors";
@@ -11,6 +12,7 @@ function snapshot(r: ApprovalRequest) {
     id: r.id,
     type: r.type,
     status: r.status,
+    urgent: r.urgent,
     payload: r.payload,
     requestedById: r.requestedById,
     decidedById: r.decidedById,
@@ -24,9 +26,9 @@ export async function requestApproval<P extends Prisma.InputJsonValue>(
   tx: Tx,
   input: { type: string; payload: P; requestedBy: SessionUser },
 ): Promise<ApprovalRequest> {
-  getApprovalType(input.type);
+  const definition = getApprovalType(input.type);
   const request = await tx.approvalRequest.create({
-    data: { type: input.type, payload: input.payload, requestedById: input.requestedBy.id },
+    data: { type: input.type, payload: input.payload, requestedById: input.requestedBy.id, urgent: definition.urgent ?? false },
   });
   await audit.record(tx, {
     actor: input.requestedBy,
@@ -112,6 +114,7 @@ export async function approve(requestId: string, approver: SessionUser, note?: s
       });
       await definition.onFailure?.(request.payload, tx, { request: failed, approver, error: err });
     });
+    await logger.error("approval_execution_failed", { requestId: request.id, type: request.type, approverId: approver.id, error: message });
     throw new KitError(`Approved, but execution failed: ${message}`, 500, "execution_failed");
   }
 }

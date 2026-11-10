@@ -9,7 +9,7 @@ export const auditFilterSchema = z.object({
   entity: z.string().trim().optional(),
   from: z.string().date().optional().or(z.literal("")),
   to: z.string().date().optional().or(z.literal("")),
-});
+}).strict();
 export type AuditFilters = z.infer<typeof auditFilterSchema>;
 
 export function parseAuditFilters(params: Record<string, string | string[] | undefined>): AuditFilters {
@@ -54,3 +54,16 @@ export const listAllAuditEvents = withPermission("audit.view", async (_user, fil
 export const listAuditEvents = withPermission("audit.view", async (_user, filters: AuditFilters, limit: number = 500) =>
   prisma.auditEvent.findMany({ where: whereFor(filters), orderBy: { id: "desc" }, take: limit }),
 );
+
+/**
+ * One page of audit events for one entity, newest first; pass the last id seen as `before` for the next page.
+ * NOT permission-checked: call it from an app loader wrapped in withPermission with the app's own view permission.
+ */
+export async function loadEntityHistory(entityType: string, entityId: string, opts: { limit?: number; before?: number } = {}) {
+  const { limit = 50, before } = opts;
+  return prisma.auditEvent.findMany({
+    where: { entityType, entityId, ...(before ? { id: { lt: before } } : {}) },
+    orderBy: { id: "desc" },
+    take: limit,
+  });
+}

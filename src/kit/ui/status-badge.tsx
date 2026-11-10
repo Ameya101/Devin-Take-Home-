@@ -11,7 +11,7 @@ const TONES: Record<string, string> = {
 const STATUS_TONE: Record<string, keyof typeof TONES> = {
   succeeded: "green", processed: "green", executed: "green", approved: "green",
   pending: "amber", pending_approval: "amber", requested: "amber", partially_refunded: "blue",
-  refunded: "gray", rejected: "red", failed: "red",
+  refunded: "gray", rejected: "red", failed: "red", urgent: "red",
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {

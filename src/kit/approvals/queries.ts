@@ -12,11 +12,11 @@ export const listMyRequests = withPermission("approvals.view", async (user) =>
   prisma.approvalRequest.findMany({ where: { requestedById: user.id }, include, orderBy: { requestedAt: "desc" } }),
 );
 
-/** Pending requests this user may decide: they hold the type's permission and did not request it. */
+/** Pending requests this user may decide: they hold the type's permission and did not request it. Urgent first, then oldest. */
 export const listWaitingForMe = withPermission("approvals.view", async (user) =>
   prisma.approvalRequest.findMany({
     where: { status: "pending", type: { in: approvalTypesApprovableBy(user) }, requestedById: { not: user.id } },
     include,
-    orderBy: { requestedAt: "asc" },
+    orderBy: [{ urgent: "desc" }, { requestedAt: "asc" }],
   }),
 );

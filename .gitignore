@@ -45,5 +45,12 @@ next-env.d.ts
 /prisma/*.db
 /prisma/*.db-journal
 
+# Prisma shadow databases created by `prisma migrate diff`
+shadow.db*
+
 # Mock payments processor record (see MOCK_PAYMENTS_LOG)
 .mock-payments*.jsonl
+
+# E2E artifacts
+/playwright-report
+/test-results

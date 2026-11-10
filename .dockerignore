@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.env*
+!.env.example
+*.db
+*.db-journal
+.mock-payments*.jsonl
+playwright-report
+test-results

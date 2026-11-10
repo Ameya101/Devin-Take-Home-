@@ -9,8 +9,11 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:reset": "prisma migrate reset --force",
-    "postinstall": "node scripts/ensure-env.mjs && prisma generate"
+    "db:reset": "node scripts/prisma.mjs migrate reset --force",
+    "postinstall": "node scripts/ensure-env.mjs && node scripts/prisma.mjs generate",
+    "db:migrate": "node scripts/prisma.mjs migrate deploy",
+    "db:postgres-schema": "node scripts/postgres-schema.mjs",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -28,6 +31,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

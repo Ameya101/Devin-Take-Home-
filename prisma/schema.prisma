@@ -50,6 +50,8 @@ model ApprovalRequest {
   payload       Json
   /// pending | approved | rejected | executed | failed
   status        String    @default("pending")
+  /// Urgent requests are listed first in approvers' queues. Set from the approval type.
+  urgent        Boolean   @default(false)
   requestedById String
   requestedBy   User      @relation("requestedBy", fields: [requestedById], references: [id])
   requestedAt   DateTime  @default(now())
@@ -59,6 +61,7 @@ model ApprovalRequest {
   decisionNote  String?
 
   @@index([status])
+  @@index([status, urgent])
 }
 
 // ---------------------------------------------------------------------------
@@ -103,4 +106,56 @@ model Refund {
   createdAt         DateTime @default(now())
 
   @@index([paymentId])
+}
+
+// ---------------------------------------------------------------------------
+// Feature flags app
+// ---------------------------------------------------------------------------
+
+model FeatureFlag {
+  id             String              @id @default(cuid())
+  key            String              @unique
+  description    String
+  ownerTeam      String
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  environments   FlagEnvironment[]
+  changeRequests FlagChangeRequest[]
+}
+
+/// Per-environment state of a flag. Rollout applies only while enabled.
+model FlagEnvironment {
+  id             String      @id @default(cuid())
+  flagId         String
+  flag           FeatureFlag @relation(fields: [flagId], references: [id])
+  /// dev | staging | prod
+  environment    String
+  enabled        Boolean     @default(false)
+  rolloutPercent Int         @default(0)
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([flagId, environment])
+}
+
+/// Immutable record of a prod change request or kill switch. Its status is the linked ApprovalRequest's status.
+model FlagChangeRequest {
+  id                 String      @id @default(cuid())
+  flagId             String
+  flag               FeatureFlag @relation(fields: [flagId], references: [id])
+  /// change | kill_switch
+  kind               String
+  /// prod
+  environment        String
+  fromEnabled        Boolean
+  fromRolloutPercent Int
+  toEnabled          Boolean
+  toRolloutPercent   Int
+  reason             String?
+  requestedById      String
+  approvalRequestId  String      @unique
+  /// "<flagId>:<kind>" while the approval is pending, null once decided: at most one pending request per flag and kind.
+  pendingSlot        String?     @unique
+  createdAt          DateTime    @default(now())
+
+  @@index([flagId])
 }
