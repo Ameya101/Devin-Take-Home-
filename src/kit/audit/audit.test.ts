@@ -42,7 +42,7 @@ describe("audit hash chain", () => {
         }),
       ),
     );
-    expect(results.some((r) => r.status === "fulfilled")).toBe(true);
+    expect(results.filter((r) => r.status === "rejected")).toEqual([]);
     expect(await audit.verifyChain()).toMatchObject({ ok: true });
   });
 

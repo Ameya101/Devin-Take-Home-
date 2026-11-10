@@ -15,11 +15,14 @@ export type RefundLargePayload = { refundId: string; paymentId: string; amountCe
 
 /**
  * Serializes refunds on one payment so two concurrent requests can't both pass the remaining-refundable check.
- * Postgres: row lock until commit. SQLite: a no-op write takes the database write lock before we read.
+ * Postgres: audit chain lock first (the kit's lock order), then a row lock until commit.
+ * SQLite: a no-op write takes the database write lock before we read.
  */
 async function lockPayment(tx: Tx, paymentId: string): Promise<void> {
-  if (dbProvider === "postgresql") await tx.$queryRaw`SELECT "id" FROM "Payment" WHERE "id" = ${paymentId} FOR UPDATE`;
-  else await tx.$executeRaw`UPDATE "Payment" SET "id" = "id" WHERE "id" = ${paymentId}`;
+  if (dbProvider === "postgresql") {
+    await audit.lockChain(tx);
+    await tx.$queryRaw`SELECT "id" FROM "Payment" WHERE "id" = ${paymentId} FOR UPDATE`;
+  } else await tx.$executeRaw`UPDATE "Payment" SET "id" = "id" WHERE "id" = ${paymentId}`;
 }
 
 /** Issues a refund: small ones are processed now, large ones become a "refund.large" approval request. */

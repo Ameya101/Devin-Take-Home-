@@ -14,5 +14,5 @@ An external store written after the business transaction can miss events (the wr
 ## Consequences
 - Atomic with the business data, no extra infrastructure, and verifiable by anyone with read access.
 - A DB superuser can rewrite the whole chain consistently. Detecting that requires anchoring the head outside the DB (e.g. periodic export to WORM storage or a SIEM), which is listed under Production gaps.
-- Audit writes serialize on the chain head, which limits write throughput. That's acceptable for internal tools but not for high-volume event streams.
+- Audit writes serialize on the chain head (on Postgres, a transaction-scoped advisory lock held until commit), which limits write throughput. That's acceptable for internal tools but not for high-volume event streams. Take that lock before any row lock so audited transactions can't deadlock.
 - A retention policy and SIEM export are still needed.

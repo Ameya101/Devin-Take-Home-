@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Prisma, type AuditEvent } from "@prisma/client";
-import { prisma, type Tx } from "@/kit/db";
+import { dbProvider, prisma, type Tx } from "@/kit/db";
 import { canonicalJson, toJson, type JsonValue } from "./canonical";
 
 export const GENESIS_HASH = "0".repeat(64);
@@ -41,10 +41,20 @@ function dbJson(value: JsonValue) {
 }
 
 /**
+ * Serializes chain appends until the caller's transaction ends, so concurrent writers queue on the head instead of
+ * failing the unique prevHash constraint. Postgres only: SQLite already allows one writer at a time.
+ * Lock order: take this before row locks (e.g. SELECT ... FOR UPDATE) so audited transactions can't deadlock.
+ */
+async function lockChain(tx: Tx): Promise<void> {
+  if (dbProvider === "postgresql") await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('itk.audit_chain'))`;
+}
+
+/**
  * Appends an event to the hash chain. Must be called with the caller's transaction
  * so the audit row commits (or rolls back) together with the change it describes.
  */
 async function record(tx: Tx, input: AuditInput): Promise<AuditEvent> {
+  await lockChain(tx);
   const last = await tx.auditEvent.findFirst({ orderBy: { id: "desc" }, select: { hash: true } });
   const prevHash = last?.hash ?? GENESIS_HASH;
   const fields: HashedFields = {
@@ -142,4 +152,4 @@ async function verifyChain(db: Pick<typeof prisma, "auditEvent"> = prisma, ancho
   }
 }
 
-export const audit = { record, verifyChain };
+export const audit = { record, lockChain, verifyChain };
