@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { IssueRefundForm } from "@/apps/refunds/components/issue-refund-form";
+import { ReconcileRefundButton } from "@/apps/refunds/components/reconcile-refund-button";
 import { LARGE_REFUND_THRESHOLD_CENTS } from "@/apps/refunds/config";
 import { remainingRefundableCents } from "@/apps/refunds/policy";
 import { getPaymentDetail } from "@/apps/refunds/queries";
@@ -78,7 +79,17 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
                       <TableCell>{formatMoney(r.amountCents, payment.currency)}</TableCell>
                       <TableCell>{r.reason.replace(/_/g, " ")}</TableCell>
                       <TableCell>{r.requestedBy.email}</TableCell>
-                      <TableCell><StatusBadge status={r.status} /></TableCell>
+                      <TableCell>
+                        <StatusBadge status={r.status} />
+                        {r.outcomeUnknown && (
+                          <div className="mt-1 space-y-1">
+                            <p className="text-xs text-destructive">Processor outcome unknown; amount stays reserved.</p>
+                            <Can permission="refunds.approve_large">
+                              <ReconcileRefundButton refundId={r.id} />
+                            </Can>
+                          </div>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

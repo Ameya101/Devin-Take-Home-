@@ -1,4 +1,4 @@
-import type { Refund } from "@prisma/client";
+import type { Payment, Refund } from "@prisma/client";
 import { requestApproval } from "@/kit/approvals/service";
 import { audit } from "@/kit/audit/audit";
 import type { SessionUser } from "@/kit/auth/types";
@@ -64,14 +64,42 @@ export async function processRefund(tx: Tx, refundId: string, actor: SessionUser
   });
   const processed = await tx.refund.update({ where: { id: refund.id }, data: { status: "processed", providerRefundId } });
   await audit.record(tx, { actor, action: "refund.processed", entityType: "Refund", entityId: refund.id, before, after: processed });
+  await syncPaymentStatus(tx, payment, actor);
+  return processed;
+}
 
+async function syncPaymentStatus(tx: Tx, payment: Payment, actor: SessionUser): Promise<void> {
   const refunds = await tx.refund.findMany({ where: { paymentId: payment.id } });
   const status = paymentStatusAfterRefunds(payment.amountCents, refunds);
   if (status !== payment.status) {
     const updated = await tx.payment.update({ where: { id: payment.id }, data: { status } });
     await audit.record(tx, { actor, action: "payment.status_changed", entityType: "Payment", entityId: payment.id, before: payment, after: updated });
   }
-  return processed;
+}
+
+/**
+ * Settles a refund whose processor outcome was unknown (its approval failed without a confirmed decline):
+ * asks the processor by idempotency key, then marks it processed or releases the reserved amount.
+ */
+export async function reconcileRefund(user: SessionUser, refundId: string): Promise<Refund> {
+  return prisma.$transaction(async (tx) => {
+    const refund = await tx.refund.findUnique({ where: { id: refundId }, include: { payment: true } });
+    if (!refund) throw new NotFoundError("Refund not found");
+    const approval = refund.approvalRequestId ? await tx.approvalRequest.findUnique({ where: { id: refund.approvalRequestId } }) : null;
+    if (refund.status !== "pending_approval" || approval?.status !== "failed") {
+      throw new ConflictError("Only refunds with an unknown processor outcome can be reconciled");
+    }
+    const { payment, ...before } = refund;
+    const result = await getPaymentsAdapter().lookupRefund({ idempotencyKey: refund.id });
+    if (result.status === "not_found") {
+      await markRefundRejected(tx, refund.id, user, "refund.reconciled_not_refunded");
+      return tx.refund.findUniqueOrThrow({ where: { id: refund.id } });
+    }
+    const processed = await tx.refund.update({ where: { id: refund.id }, data: { status: "processed", providerRefundId: result.providerRefundId } });
+    await audit.record(tx, { actor: user, action: "refund.reconciled_processed", entityType: "Refund", entityId: refund.id, before, after: processed, metadata: { approvalRequestId: approval.id } });
+    await syncPaymentStatus(tx, payment, user);
+    return processed;
+  });
 }
 
 /** Processor outcome unknown: keep the amount reserved until the refund is reconciled using its id (the idempotency key). */
