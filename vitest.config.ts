@@ -13,6 +13,7 @@ export default defineConfig({
       DATABASE_URL: "file:./test.db",
       SESSION_SECRET: "test-only-session-secret-0123456789abcdef",
       PAYMENTS_ADAPTER: "mock",
+      MOCK_PAYMENTS_LOG: ".mock-payments.test.jsonl",
     },
   },
 });
