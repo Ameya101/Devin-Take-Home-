@@ -2,7 +2,9 @@
 
 Start a new Devin session with the "New internal tool on the kit" playbook attached, then paste the spec below.
 
-Using the "New internal tool on the kit" playbook, build a Feature Flag Admin app in Devin-Take-Home- repo.
+Git workflow for this session: work only on the existing branch `session-2`. Before writing code, run `git fetch origin && git checkout session-2 && git merge origin/bazalu` so it includes everything merged so far. Push all commits to `session-2` and open (or update) a pull request from `session-2` into `bazalu`. Do not push to `bazalu` directly.
+
+Using the "New internal tool on the kit" playbook, build a Feature Flag Admin app in the Devin-Take-Home- repo.
 
 Spec:
 - Engineers manage feature flags per environment (dev, staging, prod).

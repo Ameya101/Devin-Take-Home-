@@ -2,6 +2,8 @@
 
 Paste everything below into a new Devin session.
 
+Git workflow for this session: work only on the existing branch `session-1`. Before writing code, run `git fetch origin && git checkout session-1 && git merge origin/bazalu` so it includes everything merged so far. Push all commits to `session-1` and open (or update) a pull request from `session-1` into `bazalu`. Do not push to `bazalu` directly.
+
 You are building a proof of concept for a Series C fintech (~60 engineers) that currently uses Microsoft Power Apps for internal tools (KYC review queue, refunds dashboard, feature-flag admin) and plans to build 10+ more. The goal is to show they can replace Power Apps with a shared internal-tools kit their engineers own, where most of the value is the governance layer (auth, roles, audit, approvals), not the screens.
 
 Repo: Devin-Take-Home- (it only contains this devin/ folder of prompts and a README). Build the app at the repo root. Do not modify anything in devin/. Follow the Knowledge entries for this repo strictly. Keep the scope tight: this should take about an hour. Do not add features not listed here.
@@ -57,5 +59,5 @@ Vitest unit tests for: can()/withPermission denial, approver != requester rule, 
 - `npm install && npm run db:reset && npm run dev` works from a clean clone.
 - Logged in as agent@acme.test I can issue a $50 refund (processed) and a $900 refund (pending approval). As agent I cannot approve it. As approver@acme.test I can approve it, and the audit log shows the full chain with before/after values and "Verify integrity" passes.
 - lint, typecheck and tests pass.
-- Open a PR titled "Internal tools kit + Refunds app" with a short description of the architecture and a checklist of the "Done when" items you verified, with screenshots of the refunds page, the approvals page and the audit log.
+- Open the PR from session-1 titled "Session 1: Internal tools kit + Refunds app" with a short description of the architecture and a checklist of the "Done when" items you verified, with screenshots of the refunds page, the approvals page and the audit log.
 - Also add docs/ADDING_AN_APP.md: the exact steps to add a new app on the kit (manifest, permissions, models, pages, audit, approvals, tests). Session 2 will follow this file.

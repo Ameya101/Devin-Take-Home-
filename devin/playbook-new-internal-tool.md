@@ -17,7 +17,7 @@ Procedure
 7. Build pages with the kit's AppShell and DataTable. Mask PII in lists.
 8. Add unit tests for the app's policies (who can do what, which actions need approval) and one test proving a requester cannot approve their own request.
 9. Run lint, typecheck, tests, and click through the golden path as two different seeded users.
-10. Open a PR with: the plan from step 2, screenshots, and the list of permissions and approval types added.
+10. Open a PR (from the session branch named in the prompt, into bazalu) with: the plan from step 2, screenshots, and the list of permissions and approval types added.
 
 Specifications
 - No new dependencies without saying why in the PR.

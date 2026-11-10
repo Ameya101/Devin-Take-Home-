@@ -17,4 +17,4 @@ The `devin/` folder holds everything given to Devin:
 | `devin/sessions/session-2-feature-flags.md` | Session 2 prompt: Feature Flag admin from a short spec, using the playbook |
 | `devin/sessions/session-3-fde-hardening.md` | Session 3 prompt: tests, CI, Docker, docs, security pass |
 
-Each session ends in a pull request that is reviewed by a human before merging.
+Each Devin session works on its own branch (`session-1`, `session-2`, `session-3`) and ends in a pull request into `bazalu` that a human reviews before merging. Merge them in order.

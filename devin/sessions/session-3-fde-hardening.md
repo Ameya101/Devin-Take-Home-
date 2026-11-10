@@ -2,6 +2,8 @@
 
 Paste everything below into a new Devin session after Sessions 1 and 2 are merged.
 
+Git workflow for this session: work only on the existing branch `session-3`. Before writing code, run `git fetch origin && git checkout session-3 && git merge origin/bazalu` so it includes everything merged so far. Push all commits to `session-3` and open (or update) a pull request from `session-3` into `bazalu`. Do not push to `bazalu` directly.
+
 Act as a forward deployed engineer getting the Devin-Take-Home- repo ready to hand over to a client's platform team. The client is a regulated fintech; their security team and a SOC 2 auditor will read this repo. Keep each change small and focused. Do not add new product features. Target about 30 minutes.
 
 1. Security pass
@@ -21,4 +23,4 @@ Act as a forward deployed engineer getting the Devin-Take-Home- repo ready to ha
 6. Documentation
    - README: what this is (one paragraph), architecture diagram (Mermaid: kit layers, apps, DB, auth provider, payments adapter), quick start (local and Docker), demo script (which user to log in as and what to click), how to add an app (link docs/ADDING_AN_APP.md), and a "Production gaps" section listing honestly what is NOT production-ready (OIDC is a stub, mock payments adapter, no data retention policy, no SIEM export, no backups, no per-environment deploy pipeline, no load testing).
    - docs/adr/: three short ADRs (context, decision, consequences): 001 server-side RBAC via withPermission, 002 hash-chained audit log in the app DB vs external log store, 003 maker-checker as a kit primitive.
-7. Open a PR titled "Hardening for handover" with a summary table of what changed and what remains in Production gaps.
+7. Open the PR from session-3 titled "Hardening for handover" with a summary table of what changed and what remains in Production gaps.
