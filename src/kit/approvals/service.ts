@@ -11,6 +11,7 @@ function snapshot(r: ApprovalRequest) {
     id: r.id,
     type: r.type,
     status: r.status,
+    urgent: r.urgent,
     payload: r.payload,
     requestedById: r.requestedById,
     decidedById: r.decidedById,
@@ -24,9 +25,9 @@ export async function requestApproval<P extends Prisma.InputJsonValue>(
   tx: Tx,
   input: { type: string; payload: P; requestedBy: SessionUser },
 ): Promise<ApprovalRequest> {
-  getApprovalType(input.type);
+  const definition = getApprovalType(input.type);
   const request = await tx.approvalRequest.create({
-    data: { type: input.type, payload: input.payload, requestedById: input.requestedBy.id },
+    data: { type: input.type, payload: input.payload, requestedById: input.requestedBy.id, urgent: definition.urgent ?? false },
   });
   await audit.record(tx, {
     actor: input.requestedBy,

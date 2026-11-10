@@ -22,11 +22,11 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
 
 /** The single source of truth for role -> permissions. Do not map roles anywhere else. */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  viewer: ["refunds.view"],
+  viewer: ["refunds.view", "flags.view"],
   support_agent: ["refunds.view", "refunds.create", "approvals.view"],
   finance_approver: ["refunds.view", "refunds.approve_large", "approvals.view"],
-  eng_admin: ["approvals.view"],
-  platform_admin: ["refunds.view", "approvals.view", "audit.view"],
+  eng_admin: ["flags.view", "flags.create", "flags.edit_nonprod", "flags.request_prod", "flags.approve_prod", "approvals.view"],
+  platform_admin: ["refunds.view", "flags.view", "approvals.view", "audit.view"],
 };
 
 export function isRole(value: string): value is Role {

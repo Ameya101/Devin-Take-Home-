@@ -24,10 +24,15 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
 
   const rows: DataTableRow[] = requests.map((r) => ({
     id: r.id,
-    searchText: `${r.type} ${r.requestedBy.email} ${r.status}`,
+    searchText: `${r.type} ${r.requestedBy.email} ${r.status}${r.urgent ? " urgent" : ""}`,
     sortValues: { type: r.type, requestedBy: r.requestedBy.email, requestedAt: r.requestedAt.getTime(), status: r.status },
     cells: {
-      type: <span className="font-mono text-xs">{r.type}</span>,
+      type: (
+        <span className="flex flex-col items-start gap-1">
+          {r.urgent && <StatusBadge status="urgent" className="font-bold uppercase" />}
+          <span className="font-mono text-xs">{r.type}</span>
+        </span>
+      ),
       summary: describeApproval(r.type, r.payload),
       requestedBy: r.requestedBy.email,
       requestedAt: formatDateTime(r.requestedAt),
@@ -53,7 +58,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
 
   return (
     <div>
-      <PageHeader title="Approvals" description="Maker-checker: requesters can never approve their own requests. Enforced on the server." />
+      <PageHeader title="Approvals" description="Maker-checker: requesters can never approve their own requests. Enforced on the server. Urgent requests are listed first." />
       <div className="mb-4 inline-flex rounded-lg border bg-background p-1">
         {tabs.map((t) => (
           <Link

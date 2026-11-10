@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import "../src/apps/approval-types";
+import { seedFeatureFlags } from "../src/apps/flags/seed";
 import { issueRefund } from "../src/apps/refunds/service";
 import { audit } from "../src/kit/audit/audit";
 import { toSessionUser } from "../src/kit/auth/user";
@@ -22,6 +23,7 @@ const USERS = [
   { email: "agent2@acme.test", name: "Sam Second-Agent", role: "support_agent" },
   { email: "approver@acme.test", name: "Fiona Finance", role: "finance_approver" },
   { email: "eng@acme.test", name: "Eli Engineer", role: "eng_admin" },
+  { email: "eng2@acme.test", name: "Erin Second-Engineer", role: "eng_admin" },
   { email: "admin@acme.test", name: "Pat Platform", role: "platform_admin" },
 ];
 
@@ -86,8 +88,10 @@ async function main() {
   await issueRefund(byEmail["agent@acme.test"], { paymentId: large[0].id, amountCents: 75_000, reason: "product_not_received", note: "Customer says the order never arrived." });
   await issueRefund(byEmail["agent2@acme.test"], { paymentId: large[1].id, amountCents: large[1].amountCents, reason: "fraudulent", note: "Card reported stolen." });
 
+  const flags = await seedFeatureFlags(byEmail["eng@acme.test"], byEmail["eng2@acme.test"]);
+
   const check = await audit.verifyChain(prisma);
-  console.log(`Seeded ${users.length} users, ${customers.length} customers, ${payments.length} payments; audit chain ok=${check.ok} (${check.checked} events)`);
+  console.log(`Seeded ${users.length} users, ${customers.length} customers, ${payments.length} payments, ${flags} feature flags; audit chain ok=${check.ok} (${check.checked} events)`);
 }
 
 main()

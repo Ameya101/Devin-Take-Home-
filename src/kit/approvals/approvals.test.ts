@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/kit/auth/current-user", () => ({ getCurrentUser: vi.fn(), requireUser: vi.fn() }));
 import { makeUser } from "../../../tests/helpers";
+import { getCurrentUser } from "@/kit/auth/current-user";
 import { prisma } from "@/kit/db";
 import { ConflictError, ForbiddenError } from "@/kit/errors";
 import { registerApprovalType } from "./registry";
+import { listWaitingForMe } from "./queries";
 import { approve, reject, requestApproval } from "./service";
 
 const execute = vi.fn(async () => ({ done: true }));
 registerApprovalType<{ n: number }>("test.thing", { permissionToApprove: "refunds.approve_large", execute });
+registerApprovalType<{ n: number }>("test.urgent_thing", { permissionToApprove: "refunds.approve_large", urgent: true, execute });
 
 async function newRequest(requester: Awaited<ReturnType<typeof makeUser>>) {
   return prisma.$transaction((tx) => requestApproval(tx, { type: "test.thing", payload: { n: 1 }, requestedBy: requester }));
@@ -59,5 +64,36 @@ describe("approvals", () => {
     await expect(approve(req.id, approver)).rejects.toThrow(/processor down/);
     const after = await prisma.approvalRequest.findUniqueOrThrow({ where: { id: req.id } });
     expect(after.status).toBe("failed");
+  });
+
+  it("stores urgency from the approval type and lists urgent requests first in Waiting for me", async () => {
+    const requester = await makeUser("support_agent");
+    const approver = await makeUser("finance_approver");
+    const normal = await newRequest(requester);
+    const urgent = await prisma.$transaction((tx) => requestApproval(tx, { type: "test.urgent_thing", payload: { n: 2 }, requestedBy: requester }));
+    expect(normal.urgent).toBe(false);
+    expect(urgent.urgent).toBe(true);
+    const requested = await prisma.auditEvent.findFirstOrThrow({ where: { action: "approval.requested", entityId: urgent.id } });
+    expect(requested.after).toMatchObject({ urgent: true });
+
+    vi.mocked(getCurrentUser).mockResolvedValue(approver);
+    const queue = await listWaitingForMe();
+    const ids = queue.map((r) => r.id);
+    expect(ids.indexOf(urgent.id)).toBeLessThan(ids.indexOf(normal.id));
+    expect(queue.findIndex((r) => !r.urgent)).toBeGreaterThan(queue.findLastIndex((r) => r.urgent));
+  });
+
+  it("runs onFailure in the failing transaction", async () => {
+    const onFailure = vi.fn(async () => {});
+    registerApprovalType<{ n: number }>("test.failing", {
+      permissionToApprove: "refunds.approve_large",
+      execute: async () => { throw new Error("boom"); },
+      onFailure,
+    });
+    const requester = await makeUser("support_agent");
+    const approver = await makeUser("finance_approver");
+    const req = await prisma.$transaction((tx) => requestApproval(tx, { type: "test.failing", payload: { n: 3 }, requestedBy: requester }));
+    await expect(approve(req.id, approver)).rejects.toThrow(/boom/);
+    expect(onFailure).toHaveBeenCalledOnce();
   });
 });

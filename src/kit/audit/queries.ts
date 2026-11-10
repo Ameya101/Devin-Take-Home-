@@ -54,3 +54,11 @@ export const listAllAuditEvents = withPermission("audit.view", async (_user, fil
 export const listAuditEvents = withPermission("audit.view", async (_user, filters: AuditFilters, limit: number = 500) =>
   prisma.auditEvent.findMany({ where: whereFor(filters), orderBy: { id: "desc" }, take: limit }),
 );
+
+/**
+ * Audit events for one entity, newest first. NOT permission-checked: call it from an app loader
+ * wrapped in withPermission with the app's own view permission (e.g. a per-record history panel).
+ */
+export async function loadEntityHistory(entityType: string, entityId: string, limit: number = 200) {
+  return prisma.auditEvent.findMany({ where: { entityType, entityId }, orderBy: { id: "desc" }, take: limit });
+}
