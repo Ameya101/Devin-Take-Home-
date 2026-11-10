@@ -13,8 +13,8 @@ export type ApprovalTypeDefinition<P> = {
   execute: (payload: P, tx: Tx, ctx: ApprovalContext) => Promise<unknown>;
   /** Optional hook run inside the rejection transaction (e.g. to update the domain row). */
   onReject?: (payload: P, tx: Tx, ctx: ApprovalContext) => Promise<void>;
-  /** Optional hook run in the transaction that marks the request "failed" (e.g. to release reserved amounts). */
-  onFailure?: (payload: P, tx: Tx, ctx: ApprovalContext) => Promise<void>;
+  /** Optional hook run in the transaction that marks the request "failed". Only release reservations when `error` proves no side effect happened. */
+  onFailure?: (payload: P, tx: Tx, ctx: ApprovalContext & { error: unknown }) => Promise<void>;
   /** Urgent requests are sorted to the top of approvers' queues and badged. Default false. */
   urgent?: boolean;
   /** Optional one-line human summary for the approvals queue. */
