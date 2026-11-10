@@ -156,17 +156,36 @@ describe("refund threshold routing", () => {
     await expect(issueRefund(agent, { paymentId: payment.id, amountCents: 1, reason: "duplicate" })).rejects.toThrow(/remaining refundable/);
   });
 
-  it("the mock processor's record survives a restart and is pruned after the retention window", async () => {
+  it("the mock processor's record survives a restart and is never expired", async () => {
     const key = `test-${Date.now()}-${Math.random()}`;
     await new MockPaymentsAdapter().refund({ paymentId: "p", amountCents: 100, currency: "USD", idempotencyKey: key });
     vi.resetModules();
     const fresh = await import("./payments-adapter");
+    vi.useFakeTimers({ now: Date.now() + 400 * 24 * 3600 * 1000, toFake: ["Date"] });
     expect(await new fresh.MockPaymentsAdapter().lookupRefund({ idempotencyKey: key })).toMatchObject({ status: "succeeded" });
-
-    vi.useFakeTimers({ now: Date.now() + 31 * 24 * 3600 * 1000, toFake: ["Date"] });
-    fresh.pruneMockPaymentsLog();
-    expect(await new fresh.MockPaymentsAdapter().lookupRefund({ idempotencyKey: key })).toEqual({ status: "not_found" });
     vi.useRealTimers();
+    expect(await new fresh.MockPaymentsAdapter().lookupRefund({ idempotencyKey: `${key}-other` })).toEqual({ status: "not_found" });
+  });
+
+  it("a damaged processor record makes misses 'unknown' and keeps later records readable", async () => {
+    const { appendFileSync } = await import("node:fs");
+    const log = process.env.MOCK_PAYMENTS_LOG!;
+    appendFileSync(log, '{"idempotencyKey":"cut-off');
+    const key = `after-damage-${Date.now()}`;
+    await new MockPaymentsAdapter().refund({ paymentId: "p", amountCents: 100, currency: "USD", idempotencyKey: key });
+    expect(await new MockPaymentsAdapter().lookupRefund({ idempotencyKey: key })).toMatchObject({ status: "succeeded" });
+    expect(await new MockPaymentsAdapter().lookupRefund({ idempotencyKey: "never-issued" })).toMatchObject({ status: "unknown" });
+
+    const agent = await makeUser("support_agent");
+    const approver = await makeUser("finance_approver");
+    const payment = await makePayment(200_000);
+    const { refund } = await issueRefund(agent, { paymentId: payment.id, amountCents: 90_000, reason: "duplicate" });
+    vi.spyOn(MockPaymentsAdapter.prototype, "refund").mockRejectedValueOnce(new Error("timeout"));
+    await expect(approve(refund.approvalRequestId!, approver)).rejects.toThrow(/execution failed/);
+    await expect(reconcileRefund(approver, refund.id)).rejects.toThrow(/manual investigation/);
+    expect((await prisma.refund.findUniqueOrThrow({ where: { id: refund.id } })).status).toBe("pending_approval");
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(log, "");
   });
 
   it("only refunds with an unknown outcome can be reconciled", async () => {

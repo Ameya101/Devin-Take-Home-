@@ -101,6 +101,9 @@ export async function reconcileRefund(user: SessionUser, refundId: string): Prom
     }
     const { payment, ...before } = refund;
     const result = await getPaymentsAdapter().lookupRefund({ idempotencyKey: refund.id });
+    if (result.status === "unknown") {
+      throw new ConflictError(`The processor can't confirm this refund's outcome (${result.reason}); it stays reserved for manual investigation`);
+    }
     if (result.status === "not_found") {
       await markRefundRejected(tx, refund.id, user, "refund.reconciled_not_refunded");
       return tx.refund.findUniqueOrThrow({ where: { id: refund.id } });
