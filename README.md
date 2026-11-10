@@ -69,7 +69,7 @@ All users are seeded and listed on `/login` (DEV ONLY, no password).
 
 ## Adding an app
 
-Follow [docs/ADDING_AN_APP.md](docs/ADDING_AN_APP.md). Architecture decisions are in [docs/adr](docs/adr).
+Follow [docs/ADDING_AN_APP.md](docs/ADDING_AN_APP.md). Architecture decisions are in [docs/adr](docs/adr). Scope, tradeoffs and how Devin was used are in [docs/KEY_DECISIONS.md](docs/KEY_DECISIONS.md).
 
 ## Security notes
 
