@@ -210,6 +210,20 @@ describe("refund threshold routing", () => {
     expect(refunded._sum.amountCents).toBe(30_000);
   });
 
+  it("approving a large refund while new refunds hit the same payment neither deadlocks nor fails", async () => {
+    const agent = await makeUser("support_agent");
+    const approver = await makeUser("finance_approver");
+    const payment = await makePayment(200_000);
+    const { refund } = await issueRefund(agent, { paymentId: payment.id, amountCents: 90_000, reason: "duplicate" });
+    const results = await Promise.allSettled([
+      approve(refund.approvalRequestId!, approver),
+      ...Array.from({ length: 3 }, () => issueRefund(agent, { paymentId: payment.id, amountCents: 5_000, reason: "duplicate" })),
+    ]);
+    expect(results.filter((r) => r.status === "rejected")).toEqual([]);
+    expect((await prisma.refund.findUniqueOrThrow({ where: { id: refund.id } })).status).toBe("processed");
+    expect(await audit.verifyChain()).toMatchObject({ ok: true });
+  });
+
   it("rejects refunds above the remaining refundable amount", async () => {
     const agent = await makeUser("support_agent");
     const payment = await makePayment(10_000);
