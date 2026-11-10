@@ -153,7 +153,24 @@ describe("flag changes", () => {
     await expect(approve(bump.id, checker)).rejects.toThrow(/prod changed since/);
     expect((await prisma.approvalRequest.findUniqueOrThrow({ where: { id: bump.id } })).status).toBe("failed");
     expect(await prodOf(flag.id)).toMatchObject({ enabled: false, rolloutPercent: 20 });
-    expect(await prisma.auditEvent.count({ where: { entityId: flag.id, action: "flag.prod_change_failed" } })).toBe(1);
+    const failed = await prisma.auditEvent.findFirstOrThrow({ where: { entityId: flag.id, action: "flag.prod_change_failed" } });
+    expect(failed.metadata).toMatchObject({ error: expect.stringMatching(/prod changed since/) });
+  });
+
+  it("allows one pending prod change per flag even under concurrent requests, and frees it once decided", async () => {
+    const maker = await makeUser("eng_admin");
+    const checker = await makeUser("eng_admin");
+    const flag = await createFlag(maker, { key: newKey(), description: "Concurrent requests.", ownerTeam: "platform" });
+    const results = await Promise.allSettled(
+      [10, 20, 30, 40].map((rolloutPercent) => requestProdChange(maker, { flagId: flag.id, enabled: true, rolloutPercent })),
+    );
+    const ok = results.filter((r) => r.status === "fulfilled");
+    expect(ok).toHaveLength(1);
+    for (const r of results) if (r.status === "rejected") expect(r.reason).toBeInstanceOf(ConflictError);
+
+    const pending = await prisma.flagChangeRequest.findFirstOrThrow({ where: { flagId: flag.id } });
+    await reject(pending.approvalRequestId, checker, "not now");
+    await expect(requestProdChange(maker, { flagId: flag.id, enabled: true, rolloutPercent: 5 })).resolves.toBeTruthy();
   });
 
   it("rejecting a prod change leaves prod alone and records it on the flag", async () => {

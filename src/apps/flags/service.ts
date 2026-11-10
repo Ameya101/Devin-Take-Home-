@@ -1,4 +1,4 @@
-import type { ApprovalRequest, FeatureFlag, FlagChangeRequest, FlagEnvironment } from "@prisma/client";
+import { Prisma, type ApprovalRequest, type FeatureFlag, type FlagChangeRequest, type FlagEnvironment } from "@prisma/client";
 import { requestApproval } from "@/kit/approvals/service";
 import { audit } from "@/kit/audit/audit";
 import type { SessionUser } from "@/kit/auth/types";
@@ -7,6 +7,8 @@ import { ConflictError, NotFoundError, ValidationError } from "@/kit/errors";
 import { ENVIRONMENTS, FLAG_ENTITY, FLAG_KILL_SWITCH_APPROVAL, FLAG_PROD_CHANGE_APPROVAL, type Environment } from "./config";
 import { canApplyProdChange, formatState, routeFlagChange, sameState, stateOf, type EnvState, type FlagChangeKind } from "./policy";
 import { createFlagSchema, envStateSchema, type CreateFlagInput } from "./schema";
+
+const isUniqueViolation = (err: unknown) => err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
 
 export type FlagWithEnvironments = FeatureFlag & { environments: FlagEnvironment[] };
 
@@ -37,17 +39,20 @@ function flagSnapshot(f: FlagWithEnvironments) {
 /** Creates a flag with every environment off at 0%. Turning it on anywhere is a separate, audited change. */
 export async function createFlag(user: SessionUser, input: CreateFlagInput): Promise<FlagWithEnvironments> {
   const data = createFlagSchema.parse(input);
-  return prisma.$transaction(async (tx) => {
-    if (await tx.featureFlag.findUnique({ where: { key: data.key } })) {
-      throw new ConflictError(`A flag with key "${data.key}" already exists`);
-    }
-    const flag = await tx.featureFlag.create({
-      data: { ...data, environments: { create: ENVIRONMENTS.map((environment) => ({ environment })) } },
-      include: { environments: true },
+  const duplicate = () => new ConflictError(`A flag with key "${data.key}" already exists`);
+  return prisma
+    .$transaction(async (tx) => {
+      if (await tx.featureFlag.findUnique({ where: { key: data.key } })) throw duplicate();
+      const flag = await tx.featureFlag.create({
+        data: { ...data, environments: { create: ENVIRONMENTS.map((environment) => ({ environment })) } },
+        include: { environments: true },
+      });
+      await audit.record(tx, { actor: user, action: "flag.created", entityType: FLAG_ENTITY, entityId: flag.id, before: null, after: flagSnapshot(flag) });
+      return flag;
+    })
+    .catch((err) => {
+      throw isUniqueViolation(err) ? duplicate() : err;
     });
-    await audit.record(tx, { actor: user, action: "flag.created", entityType: FLAG_ENTITY, entityId: flag.id, before: null, after: flagSnapshot(flag) });
-    return flag;
-  });
 }
 
 async function loadEnvironment(tx: Tx, flagId: string, environment: Environment) {
@@ -132,6 +137,7 @@ async function createProdRequest(
       reason,
       requestedById: user.id,
       approvalRequestId: approval.id,
+      pendingSlot: `${env.flagId}:${kind}`,
     },
   });
   await audit.record(tx, {
@@ -146,10 +152,25 @@ async function createProdRequest(
   return { changeRequest, approval };
 }
 
+/** Frees the flag's pending slot once the approval is decided (runs inside the decision transaction). */
+async function releasePendingSlot(tx: Tx, approvalRequestId: string) {
+  await tx.flagChangeRequest.update({ where: { approvalRequestId }, data: { pendingSlot: null } });
+}
+
+/** The pending slot's unique index makes "one pending request per flag and kind" hold even for concurrent requests. */
+async function withPendingSlot<T>(kind: FlagChangeKind, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    throw new ConflictError(kind === "kill_switch" ? "A kill switch for this flag is already waiting for approval" : "This flag already has a prod change waiting for approval");
+  }
+}
+
 /** Any prod change becomes a "flag.prod_change" approval request. One pending change per flag at a time. */
 export async function requestProdChange(user: SessionUser, input: { flagId: string; reason?: string } & EnvState) {
   const to = envStateSchema.parse({ enabled: input.enabled, rolloutPercent: input.rolloutPercent });
-  return prisma.$transaction(async (tx) => {
+  return withPendingSlot("change", () => prisma.$transaction(async (tx) => {
     const env = await loadEnvironment(tx, input.flagId, "prod");
     if (sameState(env, to)) throw new ValidationError(`No change: prod is already ${formatState(env)}`);
     const pending = await pendingProdRequests(tx, [input.flagId]);
@@ -157,12 +178,12 @@ export async function requestProdChange(user: SessionUser, input: { flagId: stri
       throw new ConflictError("This flag already has a prod change waiting for approval");
     }
     return createProdRequest(tx, user, env, "change", to, input.reason || null);
-  });
+  }));
 }
 
 /** Kill switch: request enabled=false in prod. Still needs approval, but the approval type is urgent. */
 export async function requestKillSwitch(user: SessionUser, input: { flagId: string; reason: string }) {
-  return prisma.$transaction(async (tx) => {
+  return withPendingSlot("kill_switch", () => prisma.$transaction(async (tx) => {
     const env = await loadEnvironment(tx, input.flagId, "prod");
     if (!env.enabled) throw new ValidationError("Prod is already off");
     const pending = await pendingProdRequests(tx, [input.flagId]);
@@ -170,7 +191,7 @@ export async function requestKillSwitch(user: SessionUser, input: { flagId: stri
       throw new ConflictError("A kill switch for this flag is already waiting for approval");
     }
     return createProdRequest(tx, user, env, "kill_switch", { enabled: false, rolloutPercent: env.rolloutPercent }, input.reason);
-  });
+  }));
 }
 
 /** Approval execute(): runs in the approval transaction, as the approver. */
@@ -183,6 +204,7 @@ export async function executeProdChange(tx: Tx, payload: ProdChangePayload, appr
   }
   // A kill switch only turns prod off; it keeps whatever rollout prod has now (it may have changed since the request).
   const to = payload.kind === "kill_switch" ? { enabled: false, rolloutPercent: env.rolloutPercent } : payload.to;
+  await releasePendingSlot(tx, request.id);
   const after = await applyState(tx, approver, env, to, payload.kind === "kill_switch" ? "flag.kill_switch_executed" : "flag.env_updated", {
     route: "approval",
     approvalRequestId: request.id,
@@ -192,7 +214,8 @@ export async function executeProdChange(tx: Tx, payload: ProdChangePayload, appr
 }
 
 /** Approval onFailure(): execute() threw (e.g. prod changed since the request), so record that on the flag's history. */
-export async function recordProdChangeFailed(tx: Tx, payload: ProdChangePayload, approver: SessionUser, request: ApprovalRequest) {
+export async function recordProdChangeFailed(tx: Tx, payload: ProdChangePayload, approver: SessionUser, request: ApprovalRequest, error: unknown) {
+  await releasePendingSlot(tx, request.id);
   await audit.record(tx, {
     actor: approver,
     action: payload.kind === "kill_switch" ? "flag.kill_switch_failed" : "flag.prod_change_failed",
@@ -200,12 +223,13 @@ export async function recordProdChangeFailed(tx: Tx, payload: ProdChangePayload,
     entityId: payload.flagId,
     before: null,
     after: null,
-    metadata: { flagKey: payload.flagKey, environment: "prod", approvalRequestId: request.id },
+    metadata: { flagKey: payload.flagKey, environment: "prod", approvalRequestId: request.id, error: error instanceof Error ? error.message : String(error) },
   });
 }
 
 /** Approval onReject(): records the rejection on the flag's history. */
 export async function recordProdChangeRejected(tx: Tx, payload: ProdChangePayload, approver: SessionUser, request: ApprovalRequest) {
+  await releasePendingSlot(tx, request.id);
   await audit.record(tx, {
     actor: approver,
     action: payload.kind === "kill_switch" ? "flag.kill_switch_rejected" : "flag.prod_change_rejected",

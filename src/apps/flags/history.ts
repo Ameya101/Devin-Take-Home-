@@ -47,7 +47,7 @@ export function summarizeFlagEvent(e: Pick<AuditEvent, "action" | "before" | "af
       break;
     case "flag.prod_change_failed":
     case "flag.kill_switch_failed":
-      change = "approved, but prod had changed since the request; nothing applied";
+      change = `approved, but nothing was applied${meta.error ? `: ${String(meta.error)}` : ""}`;
       break;
   }
   return { label, environment, change };

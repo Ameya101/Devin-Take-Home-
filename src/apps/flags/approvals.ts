@@ -8,7 +8,7 @@ registerApprovalType<ProdChangePayload>(FLAG_PROD_CHANGE_APPROVAL, {
   describe: (p) => `Prod change ${p.flagKey}: ${formatState(p.from)} → ${formatState(p.to)}${p.reason ? ` (${p.reason})` : ""}`,
   execute: (p, tx, { approver, request }) => executeProdChange(tx, p, approver, request),
   onReject: (p, tx, { approver, request }) => recordProdChangeRejected(tx, p, approver, request),
-  onFailure: (p, tx, { approver, request }) => recordProdChangeFailed(tx, p, approver, request),
+  onFailure: (p, tx, { approver, request, error }) => recordProdChangeFailed(tx, p, approver, request, error),
 });
 
 registerApprovalType<ProdChangePayload>(FLAG_KILL_SWITCH_APPROVAL, {
@@ -17,5 +17,5 @@ registerApprovalType<ProdChangePayload>(FLAG_KILL_SWITCH_APPROVAL, {
   describe: (p) => `Kill switch ${p.flagKey}: turn OFF in prod (now ${formatState(p.from)}). Reason: ${p.reason ?? "none"}`,
   execute: (p, tx, { approver, request }) => executeProdChange(tx, p, approver, request),
   onReject: (p, tx, { approver, request }) => recordProdChangeRejected(tx, p, approver, request),
-  onFailure: (p, tx, { approver, request }) => recordProdChangeFailed(tx, p, approver, request),
+  onFailure: (p, tx, { approver, request, error }) => recordProdChangeFailed(tx, p, approver, request, error),
 });

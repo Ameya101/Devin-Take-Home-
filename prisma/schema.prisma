@@ -153,6 +153,8 @@ model FlagChangeRequest {
   reason             String?
   requestedById      String
   approvalRequestId  String      @unique
+  /// "<flagId>:<kind>" while the approval is pending, null once decided: at most one pending request per flag and kind.
+  pendingSlot        String?     @unique
   createdAt          DateTime    @default(now())
 
   @@index([flagId])
