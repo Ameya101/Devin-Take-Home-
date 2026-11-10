@@ -7,7 +7,11 @@ export interface PaymentsAdapter {
     /** Use the Refund id so retries never double-refund. */
     idempotencyKey: string;
   }): Promise<{ providerRefundId: string }>;
+  /** Looks up a refund by idempotency key, to settle a call whose outcome was unknown. */
+  lookupRefund(input: { idempotencyKey: string }): Promise<RefundLookup>;
 }
+
+export type RefundLookup = { status: "succeeded"; providerRefundId: string } | { status: "not_found" };
 
 /** Thrown only when the processor confirms no refund was issued. Any other error means the outcome is unknown. */
 export class RefundDeclinedError extends Error {}
@@ -19,6 +23,11 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
       console.info(`[MockPaymentsAdapter] refund ${input.amountCents} ${input.currency} on ${input.paymentId} -> ${providerRefundId}`);
     }
     return { providerRefundId };
+  }
+
+  // A mock refund call that threw never issued anything.
+  async lookupRefund(): Promise<RefundLookup> {
+    return { status: "not_found" };
   }
 }
 

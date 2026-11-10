@@ -4,12 +4,12 @@ import { makePayment, makeUser } from "../../../tests/helpers";
 import { approve } from "@/kit/approvals/service";
 import { audit } from "@/kit/audit/audit";
 import { prisma } from "@/kit/db";
-import { ForbiddenError } from "@/kit/errors";
+import { ConflictError, ForbiddenError } from "@/kit/errors";
 import { LARGE_REFUND_THRESHOLD_CENTS } from "./config";
 import { remainingRefundableCents, routeRefund } from "./policy";
 import { refundFormSchema } from "./schema";
 import { MockPaymentsAdapter, RefundDeclinedError } from "./payments-adapter";
-import { issueRefund } from "./service";
+import { issueRefund, reconcileRefund } from "./service";
 
 describe("refund threshold routing", () => {
   it("routes by the single threshold constant", () => {
@@ -99,6 +99,45 @@ describe("refund threshold routing", () => {
     expect(await prisma.auditEvent.count({ where: { action: "refund.outcome_unknown", entityId: refund.id } })).toBe(1);
     await expect(issueRefund(agent, { paymentId: payment.id, amountCents: 1, reason: "duplicate" })).rejects.toThrow(/remaining refundable/);
     expect(await audit.verifyChain()).toMatchObject({ ok: true });
+  });
+
+  async function refundWithUnknownOutcome() {
+    const agent = await makeUser("support_agent");
+    const approver = await makeUser("finance_approver");
+    const payment = await makePayment(90_000);
+    const { refund } = await issueRefund(agent, { paymentId: payment.id, amountCents: 90_000, reason: "duplicate" });
+    const spy = vi.spyOn(MockPaymentsAdapter.prototype, "refund").mockRejectedValueOnce(new Error("timeout"));
+    await expect(approve(refund.approvalRequestId!, approver)).rejects.toThrow(/execution failed/);
+    spy.mockRestore();
+    return { agent, approver, payment, refund };
+  }
+
+  it("reconciling an unknown outcome the processor never issued releases the amount", async () => {
+    const { agent, approver, payment, refund } = await refundWithUnknownOutcome();
+    expect((await reconcileRefund(approver, refund.id)).status).toBe("rejected");
+    expect(await prisma.auditEvent.count({ where: { action: "refund.reconciled_not_refunded", entityId: refund.id } })).toBe(1);
+    await expect(issueRefund(agent, { paymentId: payment.id, amountCents: 90_000, reason: "duplicate" })).resolves.toBeTruthy();
+    await expect(reconcileRefund(approver, refund.id)).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("reconciling an unknown outcome the processor did issue marks it processed without a second refund", async () => {
+    const { approver, payment, refund } = await refundWithUnknownOutcome();
+    const refundCall = vi.spyOn(MockPaymentsAdapter.prototype, "refund");
+    const lookup = vi.spyOn(MockPaymentsAdapter.prototype, "lookupRefund").mockResolvedValueOnce({ status: "succeeded", providerRefundId: "re_found_1" });
+    const settled = await reconcileRefund(approver, refund.id);
+    lookup.mockRestore();
+    expect(refundCall).not.toHaveBeenCalled();
+    refundCall.mockRestore();
+    expect(settled).toMatchObject({ status: "processed", providerRefundId: "re_found_1" });
+    expect((await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).status).toBe("refunded");
+    expect(await audit.verifyChain()).toMatchObject({ ok: true });
+  });
+
+  it("only refunds with an unknown outcome can be reconciled", async () => {
+    const agent = await makeUser("support_agent");
+    const payment = await makePayment(200_000);
+    const { refund } = await issueRefund(agent, { paymentId: payment.id, amountCents: 90_000, reason: "duplicate" });
+    await expect(reconcileRefund(agent, refund.id)).rejects.toBeInstanceOf(ConflictError);
   });
 
   it("rejects refunds above the remaining refundable amount", async () => {
