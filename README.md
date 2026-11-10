@@ -53,7 +53,7 @@ Checks: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, then `
 docker compose up --build    # http://localhost:3000
 ```
 
-The app container runs `prisma migrate deploy` against Postgres, seeds once (skipped if users already exist), then starts `next start` as a non-root user. `GET /api/health` returns 200 when the database is reachable and 503 otherwise. Set `SESSION_SECRET` in your shell to keep sessions across restarts. Compose enables the DEV ONLY login for demo purposes.
+The app container runs `prisma migrate deploy` against Postgres, seeds once (skipped after a completed seed; a half-finished seed stops startup with an error so you reset the volume), then starts `next start` as a non-root user. `GET /api/health` returns 200 when the database is reachable and 503 otherwise. Set `SESSION_SECRET` in your shell to keep sessions across restarts. Compose enables the DEV ONLY login for demo purposes.
 
 `DATABASE_URL` selects the database: `postgresql://…` uses `prisma/postgres/schema.prisma` (generated from `prisma/schema.prisma` by `npm run db:postgres-schema`; CI fails if it's stale), anything else uses SQLite. `scripts/prisma.mjs` makes that choice for every Prisma command.
 
