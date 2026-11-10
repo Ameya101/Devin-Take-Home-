@@ -1,0 +1,73 @@
+# Automatic code review on every pull request (CodeRabbit-style).
+# Needs ONE repo secret: CLAUDE_CODE_OAUTH_TOKEN (Claude Pro/Max, from `claude setup-token`)
+# or ANTHROPIC_API_KEY (Anthropic Console API key).
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            You are the code reviewer for this repo: an internal-tools kit for a
+            regulated fintech (Next.js App Router, TypeScript, Prisma, Zod, Vitest).
+            Review only the changes in this PR. Read devin/knowledge/*.md if it exists;
+            those are the binding architecture rules.
+
+            Flag, in this order of priority:
+            1. Bugs: wrong logic, unhandled errors, race conditions, broken types,
+               code that will not run, missing awaits, off-by-one, wrong Prisma queries.
+            2. Rule violations (always a blocker):
+               - A server action or route handler that reads or writes data and is
+                 not wrapped in withPermission(...). Hiding UI is not access control.
+               - A mutation that does not call audit.record() inside the SAME Prisma
+                 transaction as the change, or any code that updates/deletes audit rows.
+               - Approvals where approver != requester, approver permission, or
+                 "still pending" is not enforced on the server.
+               - Money stored or calculated as floats instead of integer cents + currency.
+               - PII (email, card, account number) shown unmasked in a list view.
+               - An app importing from another app instead of only from src/kit.
+               - Roles/permissions defined anywhere other than src/kit/rbac/permissions.ts.
+               - Authorization logic in client components.
+               - Tests disabled/skipped, or existing migrations or audit events modified.
+            3. Security: secrets in code, missing input validation (Zod), unsafe cookies,
+               SQL/HTML injection.
+            4. Missing tests for new kit code or new policies.
+
+            How to report:
+            - Use mcp__github_inline_comment__create_inline_comment for each specific
+              issue, on the exact line. Start each with a severity tag:
+              [BLOCKER], [BUG], [SECURITY], [RULE], or [NIT]. Say what is wrong and
+              give the fix in one or two sentences, with a code suggestion when short.
+            - Do not comment on style or formatting that a linter would catch.
+              Skip praise. If unsure something is a bug, say so briefly.
+            - Finish with ONE summary comment via `gh pr comment`: a verdict
+              (Ready to merge / Needs changes), a count by severity, and the top
+              3 things to fix. If you found nothing, say so in one line.
+
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Glob,Grep"
