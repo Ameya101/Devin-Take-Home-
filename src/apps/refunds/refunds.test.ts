@@ -133,6 +133,29 @@ describe("refund threshold routing", () => {
     expect(await audit.verifyChain()).toMatchObject({ ok: true });
   });
 
+  it("reconciles a refund the processor issued before the database write failed, without refunding twice", async () => {
+    const agent = await makeUser("support_agent");
+    const approver = await makeUser("finance_approver");
+    const payment = await makePayment(90_000);
+    const { refund } = await issueRefund(agent, { paymentId: payment.id, amountCents: 90_000, reason: "duplicate" });
+
+    // The processor call succeeds, then the surrounding transaction fails, rolling back our records.
+    const real = MockPaymentsAdapter.prototype.refund;
+    const spy = vi.spyOn(MockPaymentsAdapter.prototype, "refund").mockImplementationOnce(async function (this: MockPaymentsAdapter, input) {
+      await real.call(this, input);
+      throw new Error("connection reset after processor call");
+    });
+    await expect(approve(refund.approvalRequestId!, approver)).rejects.toThrow(/execution failed/);
+    spy.mockRestore();
+
+    const refundCalls = vi.spyOn(MockPaymentsAdapter.prototype, "refund");
+    const settled = await reconcileRefund(approver, refund.id);
+    expect(refundCalls).not.toHaveBeenCalled();
+    refundCalls.mockRestore();
+    expect(settled).toMatchObject({ status: "processed", providerRefundId: expect.stringMatching(/^re_mock_/) });
+    await expect(issueRefund(agent, { paymentId: payment.id, amountCents: 1, reason: "duplicate" })).rejects.toThrow(/remaining refundable/);
+  });
+
   it("only refunds with an unknown outcome can be reconciled", async () => {
     const agent = await makeUser("support_agent");
     const payment = await makePayment(200_000);
