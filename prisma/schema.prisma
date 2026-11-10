@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Kit models
+// ---------------------------------------------------------------------------
+
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+  name  String
+  /// viewer | support_agent | finance_approver | eng_admin | platform_admin
+  role  String
+
+  approvalRequests  ApprovalRequest[] @relation("requestedBy")
+  approvalDecisions ApprovalRequest[] @relation("decidedBy")
+  refunds           Refund[]
+}
+
+/// Append-only, hash-chained audit log. Never update or delete rows.
+model AuditEvent {
+  id         Int      @id @default(autoincrement())
+  timestamp  DateTime
+  actorId    String?
+  actorEmail String?
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  metadata   Json?
+  prevHash   String
+  hash       String   @unique
+
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([actorEmail])
+  @@index([timestamp])
+}
+
+model ApprovalRequest {
+  id            String    @id @default(cuid())
+  type          String
+  payload       Json
+  /// pending | approved | rejected | executed | failed
+  status        String    @default("pending")
+  requestedById String
+  requestedBy   User      @relation("requestedBy", fields: [requestedById], references: [id])
+  requestedAt   DateTime  @default(now())
+  decidedById   String?
+  decidedBy     User?     @relation("decidedBy", fields: [decidedById], references: [id])
+  decidedAt     DateTime?
+  decisionNote  String?
+
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Refunds app
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id       String    @id @default(cuid())
+  name     String
+  email    String    @unique
+  payments Payment[]
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  amountCents Int
+  currency    String
+  /// succeeded | partially_refunded | refunded | failed
+  status      String
+  cardLast4   String
+  createdAt   DateTime @default(now())
+  refunds     Refund[]
+
+  @@index([customerId])
+}
+
+model Refund {
+  id                String   @id @default(cuid())
+  paymentId         String
+  payment           Payment  @relation(fields: [paymentId], references: [id])
+  amountCents       Int
+  reason            String
+  note              String?
+  /// requested | pending_approval | processed | rejected
+  status            String
+  requestedById     String
+  requestedBy       User     @relation(fields: [requestedById], references: [id])
+  approvalRequestId String?  @unique
+  providerRefundId  String?
+  createdAt         DateTime @default(now())
+
+  @@index([paymentId])
+}
