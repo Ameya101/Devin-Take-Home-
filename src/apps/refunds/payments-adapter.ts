@@ -9,6 +9,9 @@ export interface PaymentsAdapter {
   }): Promise<{ providerRefundId: string }>;
 }
 
+/** Thrown only when the processor confirms no refund was issued. Any other error means the outcome is unknown. */
+export class RefundDeclinedError extends Error {}
+
 export class MockPaymentsAdapter implements PaymentsAdapter {
   async refund(input: { paymentId: string; amountCents: number; currency: string; idempotencyKey: string }) {
     const providerRefundId = `re_mock_${input.idempotencyKey.slice(-12)}`;

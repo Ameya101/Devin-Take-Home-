@@ -74,6 +74,12 @@ export async function processRefund(tx: Tx, refundId: string, actor: SessionUser
   return processed;
 }
 
+/** Processor outcome unknown: keep the amount reserved until the refund is reconciled using its id (the idempotency key). */
+export async function flagRefundOutcomeUnknown(tx: Tx, refundId: string, actor: SessionUser, error: string): Promise<void> {
+  const refund = await tx.refund.findUniqueOrThrow({ where: { id: refundId } });
+  await audit.record(tx, { actor, action: "refund.outcome_unknown", entityType: "Refund", entityId: refundId, before: refund, after: refund, metadata: { error, idempotencyKey: refundId } });
+}
+
 export async function markRefundRejected(tx: Tx, refundId: string, actor: SessionUser, action = "refund.rejected"): Promise<void> {
   const before = await tx.refund.findUniqueOrThrow({ where: { id: refundId } });
   const after = await tx.refund.update({ where: { id: refundId }, data: { status: "rejected" } });

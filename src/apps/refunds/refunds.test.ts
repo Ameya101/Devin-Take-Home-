@@ -8,7 +8,7 @@ import { ForbiddenError } from "@/kit/errors";
 import { LARGE_REFUND_THRESHOLD_CENTS } from "./config";
 import { remainingRefundableCents, routeRefund } from "./policy";
 import { refundFormSchema } from "./schema";
-import { MockPaymentsAdapter } from "./payments-adapter";
+import { MockPaymentsAdapter, RefundDeclinedError } from "./payments-adapter";
 import { issueRefund } from "./service";
 
 describe("refund threshold routing", () => {
@@ -68,13 +68,13 @@ describe("refund threshold routing", () => {
     expect(await audit.verifyChain()).toMatchObject({ ok: true });
   });
 
-  it("a failed adapter call marks the approval failed and releases the reserved amount", async () => {
+  it("a confirmed processor decline fails the approval and releases the reserved amount", async () => {
     const agent = await makeUser("support_agent");
     const approver = await makeUser("finance_approver");
     const payment = await makePayment(90_000);
     const { refund } = await issueRefund(agent, { paymentId: payment.id, amountCents: 90_000, reason: "duplicate" });
 
-    const spy = vi.spyOn(MockPaymentsAdapter.prototype, "refund").mockRejectedValueOnce(new Error("processor_unavailable"));
+    const spy = vi.spyOn(MockPaymentsAdapter.prototype, "refund").mockRejectedValueOnce(new RefundDeclinedError("card_closed"));
     await expect(approve(refund.approvalRequestId!, approver)).rejects.toThrow(/execution failed/);
     spy.mockRestore();
 
@@ -82,6 +82,22 @@ describe("refund threshold routing", () => {
     expect((await prisma.refund.findUniqueOrThrow({ where: { id: refund.id } })).status).toBe("rejected");
     const retry = await issueRefund(agent, { paymentId: payment.id, amountCents: 90_000, reason: "duplicate" });
     expect(retry.route).toBe("requires_approval");
+    expect(await audit.verifyChain()).toMatchObject({ ok: true });
+  });
+
+  it("an unknown processor outcome keeps the amount reserved so it cannot be refunded twice", async () => {
+    const agent = await makeUser("support_agent");
+    const approver = await makeUser("finance_approver");
+    const payment = await makePayment(90_000);
+    const { refund } = await issueRefund(agent, { paymentId: payment.id, amountCents: 90_000, reason: "duplicate" });
+
+    const spy = vi.spyOn(MockPaymentsAdapter.prototype, "refund").mockRejectedValueOnce(new Error("timeout"));
+    await expect(approve(refund.approvalRequestId!, approver)).rejects.toThrow(/execution failed/);
+    spy.mockRestore();
+
+    expect((await prisma.refund.findUniqueOrThrow({ where: { id: refund.id } })).status).toBe("pending_approval");
+    expect(await prisma.auditEvent.count({ where: { action: "refund.outcome_unknown", entityId: refund.id } })).toBe(1);
+    await expect(issueRefund(agent, { paymentId: payment.id, amountCents: 1, reason: "duplicate" })).rejects.toThrow(/remaining refundable/);
     expect(await audit.verifyChain()).toMatchObject({ ok: true });
   });
 
