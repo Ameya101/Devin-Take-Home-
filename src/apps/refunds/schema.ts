@@ -18,7 +18,7 @@ export const refundFormSchema = z.object({
     .pipe(z.number().int().positive("Amount must be greater than 0")),
   reason: z.enum(REFUND_REASONS),
   note: z.string().trim().max(500).optional(),
-});
+}).strict();
 export type RefundFormInput = z.infer<typeof refundFormSchema>;
 
 /** Server-side bound check against the live remaining refundable amount. */

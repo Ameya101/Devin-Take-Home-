@@ -2,7 +2,7 @@ import type { Payment, Refund } from "@prisma/client";
 import { requestApproval } from "@/kit/approvals/service";
 import { audit } from "@/kit/audit/audit";
 import type { SessionUser } from "@/kit/auth/types";
-import { prisma, type Tx } from "@/kit/db";
+import { dbProvider, prisma, type Tx } from "@/kit/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/kit/errors";
 import { REFUND_LARGE_APPROVAL } from "./config";
 import { getPaymentsAdapter } from "./payments-adapter";
@@ -13,9 +13,19 @@ export type IssueRefundInput = { paymentId: string; amountCents: number; reason:
 
 export type RefundLargePayload = { refundId: string; paymentId: string; amountCents: number; currency: string; reason: string };
 
+/**
+ * Serializes refunds on one payment so two concurrent requests can't both pass the remaining-refundable check.
+ * Postgres: row lock until commit. SQLite: a no-op write takes the database write lock before we read.
+ */
+async function lockPayment(tx: Tx, paymentId: string): Promise<void> {
+  if (dbProvider === "postgresql") await tx.$queryRaw`SELECT "id" FROM "Payment" WHERE "id" = ${paymentId} FOR UPDATE`;
+  else await tx.$executeRaw`UPDATE "Payment" SET "id" = "id" WHERE "id" = ${paymentId}`;
+}
+
 /** Issues a refund: small ones are processed now, large ones become a "refund.large" approval request. */
 export async function issueRefund(user: SessionUser, input: IssueRefundInput): Promise<{ refund: Refund; route: RefundRoute }> {
   return prisma.$transaction(async (tx) => {
+    await lockPayment(tx, input.paymentId);
     const payment = await tx.payment.findUnique({ where: { id: input.paymentId }, include: { refunds: true } });
     if (!payment) throw new NotFoundError("Payment not found");
     if (payment.status === "failed") throw new ValidationError("Failed payments cannot be refunded");

@@ -34,7 +34,17 @@ const CUSTOMERS = [
   "Emily Scott", "Daniel Green", "Ella Adams", "Michael Baker", "Grace Nelson",
 ];
 
+const SEED_COMPLETED = "seed.completed";
+
 async function main() {
+  if (process.env.SEED_IF_EMPTY === "true") {
+    if ((await prisma.auditEvent.count({ where: { action: SEED_COMPLETED } })) > 0) {
+      console.log("Database already seeded; skipping (SEED_IF_EMPTY=true)");
+      return;
+    }
+    // Rows without the completion marker mean an earlier seed stopped part-way; don't silently serve partial demo data.
+    if ((await prisma.user.count()) > 0) throw new Error("Database was only partly seeded; reset it (drop the volume) and start again");
+  }
   // Fixtures are inserted with a system actor and audited in the same transaction, like any other write.
   const { users, customers, payments } = await prisma.$transaction(
     async (tx) => {
@@ -89,6 +99,10 @@ async function main() {
   await issueRefund(byEmail["agent2@acme.test"], { paymentId: large[1].id, amountCents: large[1].amountCents, reason: "fraudulent", note: "Card reported stolen." });
 
   const flags = await seedFeatureFlags(byEmail["eng@acme.test"], byEmail["eng2@acme.test"]);
+
+  await prisma.$transaction((tx) =>
+    audit.record(tx, { actor: null, action: SEED_COMPLETED, entityType: "System", entityId: "seed", before: null, after: null }),
+  );
 
   const check = await audit.verifyChain(prisma);
   console.log(`Seeded ${users.length} users, ${customers.length} customers, ${payments.length} payments, ${flags} feature flags; audit chain ok=${check.ok} (${check.checked} events)`);

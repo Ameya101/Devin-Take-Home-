@@ -2,6 +2,7 @@ import { audit } from "@/kit/audit/audit";
 import type { SessionUser } from "@/kit/auth/types";
 import { prisma } from "@/kit/db";
 import { ForbiddenError } from "@/kit/errors";
+import { logger } from "@/kit/log";
 import { can } from "./can";
 import type { Permission } from "./permissions";
 
@@ -26,6 +27,7 @@ export async function denyAccess(
       },
     }),
   );
+  await logger.warn("access_denied", { permission, userId: user?.id ?? null, role: user?.role ?? null, reason: context.reason ?? null });
   throw new ForbiddenError(
     user ? `Forbidden: ${user.email} lacks "${permission}"` : "Forbidden: not signed in",
   );

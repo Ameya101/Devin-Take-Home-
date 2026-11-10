@@ -7,7 +7,7 @@ import { getAuthProvider } from "./index";
 // Sign-in/out are the only server actions not wrapped in withPermission:
 // they run before a user exists.
 export async function signInAction(formData: FormData) {
-  const { userId } = z.object({ userId: z.string().min(1) }).parse({ userId: formData.get("userId") });
+  const { userId } = z.object({ userId: z.string().min(1) }).strict().parse({ userId: formData.get("userId") });
   await getAuthProvider().signIn({ userId });
   redirect("/");
 }

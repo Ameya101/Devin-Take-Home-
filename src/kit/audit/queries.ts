@@ -9,7 +9,7 @@ export const auditFilterSchema = z.object({
   entity: z.string().trim().optional(),
   from: z.string().date().optional().or(z.literal("")),
   to: z.string().date().optional().or(z.literal("")),
-});
+}).strict();
 export type AuditFilters = z.infer<typeof auditFilterSchema>;
 
 export function parseAuditFilters(params: Record<string, string | string[] | undefined>): AuditFilters {

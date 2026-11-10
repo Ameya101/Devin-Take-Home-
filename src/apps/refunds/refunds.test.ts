@@ -199,6 +199,17 @@ describe("refund threshold routing", () => {
     await expect(reconcileRefund(agent, refund.id)).rejects.toBeInstanceOf(ConflictError);
   });
 
+  it("concurrent refunds on one payment can never exceed its amount (payment row is locked)", async () => {
+    const agent = await makeUser("support_agent");
+    const payment = await makePayment(40_000);
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, () => issueRefund(agent, { paymentId: payment.id, amountCents: 30_000, reason: "duplicate" })),
+    );
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const refunded = await prisma.refund.aggregate({ where: { paymentId: payment.id, status: { not: "rejected" } }, _sum: { amountCents: true } });
+    expect(refunded._sum.amountCents).toBe(30_000);
+  });
+
   it("rejects refunds above the remaining refundable amount", async () => {
     const agent = await makeUser("support_agent");
     const payment = await makePayment(10_000);
