@@ -19,6 +19,20 @@ describe("audit hash chain", () => {
     expect(await audit.verifyChain()).toMatchObject({ ok: true });
   });
 
+  it("concurrent writers never fork the chain", async () => {
+    const results = await Promise.allSettled(
+      Array.from({ length: 8 }, (_, i) =>
+        prisma.$transaction(async (tx) => {
+          const event = await audit.record(tx, { actor, action: "test.concurrent", entityType: "T", entityId: String(i) });
+          await new Promise((r) => setTimeout(r, 20));
+          return event;
+        }),
+      ),
+    );
+    expect(results.some((r) => r.status === "fulfilled")).toBe(true);
+    expect(await audit.verifyChain()).toMatchObject({ ok: true });
+  });
+
   it("rolls back with the caller's transaction", async () => {
     const before = await prisma.auditEvent.count();
     await prisma

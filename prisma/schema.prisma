@@ -35,7 +35,7 @@ model AuditEvent {
   before     Json?
   after      Json?
   metadata   Json?
-  prevHash   String
+  prevHash   String   @unique // two events can never claim the same predecessor, so the chain cannot fork
   hash       String   @unique
 
   @@index([action])
