@@ -2,16 +2,10 @@
 
 import "@/apps/approval-types";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { runAction, type ActionState } from "@/kit/actions";
 import { withPermission } from "@/kit/rbac/with-permission";
+import { decisionSchema } from "./schema";
 import { approve, reject } from "./service";
-
-export const decisionSchema = z.object({
-  requestId: z.string().min(1),
-  decision: z.enum(["approve", "reject"]),
-  note: z.string().max(500).optional(),
-}).strict();
 
 const decideRequest = withPermission("approvals.view", async (user, formData: FormData) => {
   const input = decisionSchema.parse({

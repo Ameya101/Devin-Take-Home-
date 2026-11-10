@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { logger } from "@/kit/log";
 
 /** Boundary to the payment processor. A real Stripe/Adyen implementation goes behind this interface. */
 export interface PaymentsAdapter {
@@ -62,9 +63,7 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
     const providerRefundId = `re_mock_${input.idempotencyKey.slice(-12)}`;
     const record: IssuedRefund = { idempotencyKey: input.idempotencyKey, providerRefundId, issuedAt: new Date().toISOString() };
     appendIssued(record);
-    if (process.env.NODE_ENV !== "test") {
-      console.info(`[MockPaymentsAdapter] refund ${input.amountCents} ${input.currency} on ${input.paymentId} -> ${providerRefundId}`);
-    }
+    await logger.info("mock_refund_issued", { paymentId: input.paymentId, amountCents: input.amountCents, currency: input.currency, providerRefundId });
     return { providerRefundId };
   }
 

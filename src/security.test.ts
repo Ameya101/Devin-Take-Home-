@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { securityHeaders } from "../next.config";
-import { decisionSchema } from "@/kit/approvals/actions";
+import { decisionSchema } from "@/kit/approvals/schema";
 import { auditFilterSchema } from "@/kit/audit/queries";
 import { sessionOptions } from "@/kit/auth/session";
 import { ForbiddenError } from "@/kit/errors";
@@ -49,6 +49,8 @@ describe("guardrail: every server action and route handler is wrapped in withPer
       const mod = await import(path.resolve(file));
       const actions = Object.entries(mod).filter(([, v]) => typeof v === "function") as [string, (...a: unknown[]) => Promise<unknown>][];
       expect(actions.length).toBeGreaterThan(0);
+      const nonFunctions = Object.keys(mod).filter((k) => typeof mod[k] !== "function");
+      expect(nonFunctions, `"use server" files may only export async functions`).toEqual([]);
       for (const [name, action] of actions) {
         if (PUBLIC.has(`${file}#${name}`)) continue;
         const outcome = await action(null, new FormData()).then((r) => r, (e: unknown) => e);

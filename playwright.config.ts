@@ -16,6 +16,8 @@ export default defineConfig({
     command: `node scripts/prisma.mjs migrate reset --force && npx next start -p ${PORT}`,
     url: `http://localhost:${PORT}/api/health`,
     reuseExistingServer: false,
+    stdout: "pipe",
+    stderr: "pipe",
     timeout: 120_000,
     env: {
       DATABASE_URL: "file:./e2e.db",
