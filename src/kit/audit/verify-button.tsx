@@ -12,7 +12,10 @@ export function VerifyIntegrityButton() {
     <div className="flex items-center gap-3">
       {result &&
         (result.ok ? (
-          <span className="text-sm font-medium text-emerald-700">✓ Chain intact: {result.checked} events verified</span>
+          <span className="text-sm font-medium text-emerald-700" title="Record the head outside the database to detect deleted events at the end of the chain">
+            ✓ Chain intact: {result.checked} events verified
+            {result.head && <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">head #{result.head.id} {result.head.hash.slice(0, 12)}…</span>}
+          </span>
         ) : (
           <span className="text-sm font-medium text-destructive">
             ✗ Chain broken at event #{result.brokenAt.id} ({result.brokenAt.reason.replace(/_/g, " ")})

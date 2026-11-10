@@ -85,9 +85,12 @@ export function hashedFieldsOf(row: AuditEvent): HashedFields {
   };
 }
 
+/** Last event of the chain. Record it outside the database (e.g. WORM storage) to detect deleted tail events later. */
+export type ChainHead = { id: number; hash: string };
+
 export type ChainVerification =
-  | { ok: true; checked: number }
-  | { ok: false; checked: number; brokenAt: { id: number; reason: "prev_hash_mismatch" | "hash_mismatch" } };
+  | { ok: true; checked: number; head: ChainHead | null }
+  | { ok: false; checked: number; brokenAt: { id: number; reason: "prev_hash_mismatch" | "hash_mismatch" | "anchor_mismatch" } };
 
 /** Pure check over rows in id order, continuing from `prevHash`. */
 export function verifyRows(rows: AuditEvent[], prevHash = GENESIS_HASH, checkedSoFar = 0) {
@@ -106,20 +109,36 @@ export function verifyRows(rows: AuditEvent[], prevHash = GENESIS_HASH, checkedS
   return { result: { ok: true, checked } as const, prevHash: expectedPrev };
 }
 
-/** Recomputes the whole chain in batches and reports the first broken row, if any. */
-async function verifyChain(db: Pick<typeof prisma, "auditEvent"> = prisma): Promise<ChainVerification> {
+/**
+ * Recomputes the whole chain in batches and reports the first broken row, if any.
+ * Links alone cannot reveal deleted events at the end of the chain, so pass a previously recorded
+ * `anchor` (an earlier ChainHead) to also check that event is still present and unchanged.
+ */
+async function verifyChain(db: Pick<typeof prisma, "auditEvent"> = prisma, anchor?: ChainHead): Promise<ChainVerification> {
   const batchSize = 1000;
   let prevHash = GENESIS_HASH;
   let checked = 0;
   let cursor = 0;
+  let head: ChainHead | null = null;
+  let anchorFound = !anchor;
   for (;;) {
     const rows = await db.auditEvent.findMany({ where: { id: { gt: cursor } }, orderBy: { id: "asc" }, take: batchSize });
-    if (rows.length === 0) return { ok: true, checked };
+    if (rows.length === 0) {
+      if (!anchorFound && anchor) return { ok: false, checked, brokenAt: { id: anchor.id, reason: "anchor_mismatch" } };
+      return { ok: true, checked, head };
+    }
     const step = verifyRows(rows, prevHash, checked);
     if (!step.result.ok) return step.result;
+    if (anchor && !anchorFound) {
+      const row = rows.find((r) => r.id === anchor.id);
+      if (row && row.hash !== anchor.hash) return { ok: false, checked, brokenAt: { id: anchor.id, reason: "anchor_mismatch" } };
+      anchorFound = Boolean(row);
+    }
     prevHash = step.prevHash;
     checked = step.result.checked;
-    cursor = rows[rows.length - 1].id;
+    const last = rows[rows.length - 1];
+    head = { id: last.id, hash: last.hash };
+    cursor = last.id;
   }
 }
 

@@ -12,7 +12,7 @@ import { Can } from "@/kit/rbac/Can";
 import { can } from "@/kit/rbac/can";
 import { orForbidden } from "@/kit/rbac/page";
 import { formatDateTime } from "@/kit/ui/format";
-import { maskCard, maskEmail } from "@/kit/ui/mask";
+import { maskCard, maskEmail, maskName } from "@/kit/ui/mask";
 import { formatMoney } from "@/kit/ui/money";
 import { PageHeader } from "@/kit/ui/page-header";
 import { StatusBadge } from "@/kit/ui/status-badge";
@@ -23,11 +23,13 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
   if (!payment) notFound();
   const user = await getCurrentUser();
   const remaining = remainingRefundableCents(payment.amountCents, payment.refunds);
-  // Full email only for roles that act on refunds; everyone else sees it masked.
-  const email = can(user, "refunds.create") ? payment.customer.email : maskEmail(payment.customer.email);
+  // Full name and email only for roles that act on refunds; everyone else sees them masked.
+  const showPii = can(user, "refunds.create");
+  const email = showPii ? payment.customer.email : maskEmail(payment.customer.email);
+  const customerName = showPii ? payment.customer.name : maskName(payment.customer.name);
 
   const facts: [string, React.ReactNode][] = [
-    ["Customer", payment.customer.name],
+    ["Customer", customerName],
     ["Email", email],
     ["Card", <span key="card" className="font-mono">{maskCard(payment.cardLast4)}</span>],
     ["Amount", formatMoney(payment.amountCents, payment.currency)],
@@ -40,7 +42,7 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
   return (
     <div>
       <Link href="/refunds" className="text-sm text-muted-foreground hover:underline">← All payments</Link>
-      <PageHeader title={`Payment ${formatMoney(payment.amountCents, payment.currency)}`} description={payment.customer.name} />
+      <PageHeader title={`Payment ${formatMoney(payment.amountCents, payment.currency)}`} description={customerName} />
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card>

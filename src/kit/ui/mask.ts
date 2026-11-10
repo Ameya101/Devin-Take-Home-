@@ -16,3 +16,10 @@ export function maskAccountNumber(account: string): string {
   const compact = account.replace(/\s+/g, "");
   return compact.length <= 4 ? "••••" : `••••${compact.slice(-4)}`;
 }
+
+/** Olivia Martin -> Olivia M. */
+export function maskName(name: string): string {
+  const [first, ...rest] = name.trim().split(/\s+/);
+  const last = rest.at(-1);
+  return last ? `${first} ${last[0]}.` : first ?? "";
+}
