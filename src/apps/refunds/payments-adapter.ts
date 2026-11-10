@@ -16,18 +16,27 @@ export type RefundLookup = { status: "succeeded"; providerRefundId: string } | {
 /** Thrown only when the processor confirms no refund was issued. Any other error means the outcome is unknown. */
 export class RefundDeclinedError extends Error {}
 
+/**
+ * The mock "processor's" own record of issued refunds, keyed by idempotency key. It lives outside the
+ * database on purpose: a rolled-back transaction does not undo a refund the processor already issued.
+ */
+const issuedRefunds = new Map<string, string>();
+
 export class MockPaymentsAdapter implements PaymentsAdapter {
   async refund(input: { paymentId: string; amountCents: number; currency: string; idempotencyKey: string }) {
+    const existing = issuedRefunds.get(input.idempotencyKey);
+    if (existing) return { providerRefundId: existing };
     const providerRefundId = `re_mock_${input.idempotencyKey.slice(-12)}`;
+    issuedRefunds.set(input.idempotencyKey, providerRefundId);
     if (process.env.NODE_ENV !== "test") {
       console.info(`[MockPaymentsAdapter] refund ${input.amountCents} ${input.currency} on ${input.paymentId} -> ${providerRefundId}`);
     }
     return { providerRefundId };
   }
 
-  // A mock refund call that threw never issued anything.
-  async lookupRefund(): Promise<RefundLookup> {
-    return { status: "not_found" };
+  async lookupRefund(input: { idempotencyKey: string }): Promise<RefundLookup> {
+    const providerRefundId = issuedRefunds.get(input.idempotencyKey);
+    return providerRefundId ? { status: "succeeded", providerRefundId } : { status: "not_found" };
   }
 }
 
