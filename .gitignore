@@ -44,3 +44,6 @@ next-env.d.ts
 # sqlite
 /prisma/*.db
 /prisma/*.db-journal
+
+# Prisma shadow databases created by `prisma migrate diff`
+shadow.db*
