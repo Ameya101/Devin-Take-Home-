@@ -44,3 +44,6 @@ next-env.d.ts
 # sqlite
 /prisma/*.db
 /prisma/*.db-journal
+
+# Mock payments processor record (see MOCK_PAYMENTS_LOG)
+.mock-payments*.jsonl

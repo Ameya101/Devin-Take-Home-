@@ -156,6 +156,19 @@ describe("refund threshold routing", () => {
     await expect(issueRefund(agent, { paymentId: payment.id, amountCents: 1, reason: "duplicate" })).rejects.toThrow(/remaining refundable/);
   });
 
+  it("the mock processor's record survives a restart and is pruned after the retention window", async () => {
+    const key = `test-${Date.now()}-${Math.random()}`;
+    await new MockPaymentsAdapter().refund({ paymentId: "p", amountCents: 100, currency: "USD", idempotencyKey: key });
+    vi.resetModules();
+    const fresh = await import("./payments-adapter");
+    expect(await new fresh.MockPaymentsAdapter().lookupRefund({ idempotencyKey: key })).toMatchObject({ status: "succeeded" });
+
+    vi.useFakeTimers({ now: Date.now() + 31 * 24 * 3600 * 1000, toFake: ["Date"] });
+    fresh.pruneMockPaymentsLog();
+    expect(await new fresh.MockPaymentsAdapter().lookupRefund({ idempotencyKey: key })).toEqual({ status: "not_found" });
+    vi.useRealTimers();
+  });
+
   it("only refunds with an unknown outcome can be reconciled", async () => {
     const agent = await makeUser("support_agent");
     const payment = await makePayment(200_000);
