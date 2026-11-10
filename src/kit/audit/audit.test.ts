@@ -19,6 +19,19 @@ describe("audit hash chain", () => {
     expect(await audit.verifyChain()).toMatchObject({ ok: true });
   });
 
+  it("a recorded head detects events deleted from the end of the chain", async () => {
+    await prisma.$transaction((tx) => audit.record(tx, { actor, action: "test.tail", entityType: "T", entityId: "a" }));
+    const last = await prisma.$transaction((tx) => audit.record(tx, { actor, action: "test.tail", entityType: "T", entityId: "b" }));
+    const verified = await audit.verifyChain();
+    expect(verified).toMatchObject({ ok: true, head: { id: last.id, hash: last.hash } });
+    const head = { id: last.id, hash: last.hash };
+    expect(await audit.verifyChain(prisma, head)).toMatchObject({ ok: true });
+
+    await prisma.auditEvent.delete({ where: { id: last.id } });
+    expect(await audit.verifyChain()).toMatchObject({ ok: true });
+    expect(await audit.verifyChain(prisma, head)).toMatchObject({ ok: false, brokenAt: { id: last.id, reason: "anchor_mismatch" } });
+  });
+
   it("concurrent writers never fork the chain", async () => {
     const results = await Promise.allSettled(
       Array.from({ length: 8 }, (_, i) =>

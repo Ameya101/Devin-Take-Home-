@@ -5,7 +5,7 @@ import { listPayments } from "@/apps/refunds/queries";
 import { orForbidden } from "@/kit/rbac/page";
 import { DataTable, type DataTableColumn } from "@/kit/ui/data-table";
 import { formatDateTime } from "@/kit/ui/format";
-import { maskCard, maskEmail } from "@/kit/ui/mask";
+import { maskCard, maskEmail, maskName } from "@/kit/ui/mask";
 import { formatMoney } from "@/kit/ui/money";
 import { PageHeader } from "@/kit/ui/page-header";
 import { StatusBadge } from "@/kit/ui/status-badge";
@@ -26,14 +26,15 @@ export default async function RefundsPage({ searchParams }: { searchParams: Prom
 
   const rows = payments.map((p) => {
     const refunded = p.refunds.filter((r) => r.status === "processed").reduce((s, r) => s + r.amountCents, 0);
+    const customer = maskName(p.customer.name);
     return {
       id: p.id,
       href: `/refunds/${p.id}`,
-      searchText: `${p.customer.name} ${p.id} ${p.status}`,
-      sortValues: { createdAt: p.createdAt.getTime(), customer: p.customer.name, amount: p.amountCents, refunded, status: p.status },
+      searchText: `${customer} ${p.id} ${p.status}`,
+      sortValues: { createdAt: p.createdAt.getTime(), customer, amount: p.amountCents, refunded, status: p.status },
       cells: {
         createdAt: formatDateTime(p.createdAt),
-        customer: <span className="font-medium">{p.customer.name}</span>,
+        customer: <span className="font-medium">{customer}</span>,
         email: maskEmail(p.customer.email),
         card: <span className="font-mono">{maskCard(p.cardLast4)}</span>,
         amount: formatMoney(p.amountCents, p.currency),
