@@ -110,6 +110,7 @@ export async function approve(requestId: string, approver: SessionUser, note?: s
         after: snapshot(failed),
         metadata: { error: message },
       });
+      await definition.onFailure?.(request.payload, tx, { request: failed, approver });
     });
     throw new KitError(`Approved, but execution failed: ${message}`, 500, "execution_failed");
   }

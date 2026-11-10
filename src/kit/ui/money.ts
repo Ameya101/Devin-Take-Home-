@@ -12,9 +12,10 @@ export function formatMoney(minorUnits: number, currency: string): string {
 /** Parses a user-entered decimal string into integer minor units without float math. "12.5" -> 1250. */
 export function parseToMinorUnits(input: string, currency = "USD"): number | null {
   const digits = fractionDigits(currency);
-  const match = input.trim().replace(/,/g, "").match(/^(\d+)(?:\.(\d+))?$/);
+  const match = input.trim().match(/^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?$/);
   if (!match) return null;
-  const [, whole, frac = ""] = match;
+  const whole = match[1].replace(/,/g, "");
+  const frac = match[2] ?? "";
   if (frac.length > digits) return null;
   return Number(whole) * 10 ** digits + Number(frac.padEnd(digits, "0") || "0");
 }

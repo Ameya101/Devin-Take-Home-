@@ -9,11 +9,20 @@ import { toSessionUser } from "./user";
  * DEV ONLY. Lets you pick any seeded user on /login with no password.
  * The choice is stored in a signed + encrypted httpOnly cookie (iron-session).
  */
+/** The passwordless picker must never serve a production deployment by accident. */
+export function assertDevAuthAllowed() {
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEV_AUTH_IN_PRODUCTION !== "true") {
+    throw new Error('AUTH_PROVIDER="dev" is refused in production. Use "oidc" (or set ALLOW_DEV_AUTH_IN_PRODUCTION="true" for a local demo).');
+  }
+}
+
 export class DevAuthProvider implements AuthProvider {
   readonly id = "dev" as const;
 
   private async session() {
-    return getIronSession<SessionData>(await cookies(), sessionOptions());
+    const cookieStore = await cookies();
+    assertDevAuthAllowed();
+    return getIronSession<SessionData>(cookieStore, sessionOptions());
   }
 
   async getCurrentUser(): Promise<SessionUser | null> {

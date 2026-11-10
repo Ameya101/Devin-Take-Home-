@@ -2,12 +2,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { signInAction } from "@/kit/auth/actions";
 import { getAuthProvider } from "@/kit/auth";
+import { assertDevAuthAllowed } from "@/kit/auth/dev-provider";
 import { prisma } from "@/kit/db";
 
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
   const provider = getAuthProvider();
+  if (provider.id === "dev") assertDevAuthAllowed();
   // Unauthenticated by design: the dev picker needs the seeded user list before anyone is signed in.
   const users = provider.id === "dev" ? await prisma.user.findMany({ orderBy: { email: "asc" } }) : [];
   return (

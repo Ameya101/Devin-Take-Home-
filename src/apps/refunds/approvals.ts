@@ -11,4 +11,7 @@ registerApprovalType<RefundLargePayload>(REFUND_LARGE_APPROVAL, {
     return { refundId: refund.id, providerRefundId: refund.providerRefundId };
   },
   onReject: (p, tx, { approver }) => markRefundRejected(tx, p.refundId, approver),
+  // Release the reserved amount so the payment can be refunded again. The adapter is called with
+  // the refund id as idempotency key, so a provider-side success is never repeated by a new request.
+  onFailure: (p, tx, { approver }) => markRefundRejected(tx, p.refundId, approver, "refund.execution_failed"),
 });

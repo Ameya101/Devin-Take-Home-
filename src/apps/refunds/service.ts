@@ -74,8 +74,8 @@ export async function processRefund(tx: Tx, refundId: string, actor: SessionUser
   return processed;
 }
 
-export async function markRefundRejected(tx: Tx, refundId: string, actor: SessionUser): Promise<void> {
+export async function markRefundRejected(tx: Tx, refundId: string, actor: SessionUser, action = "refund.rejected"): Promise<void> {
   const before = await tx.refund.findUniqueOrThrow({ where: { id: refundId } });
   const after = await tx.refund.update({ where: { id: refundId }, data: { status: "rejected" } });
-  await audit.record(tx, { actor, action: "refund.rejected", entityType: "Refund", entityId: refundId, before, after });
+  await audit.record(tx, { actor, action, entityType: "Refund", entityId: refundId, before, after });
 }

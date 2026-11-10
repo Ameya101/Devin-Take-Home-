@@ -38,6 +38,19 @@ function whereFor(f: AuditFilters): Prisma.AuditEventWhereInput {
   return where;
 }
 
+/** Every matching event, oldest first, fetched in id-cursor pages (for complete exports). */
+export const listAllAuditEvents = withPermission("audit.view", async (_user, filters: AuditFilters) => {
+  const pageSize = 5_000;
+  const rows = [];
+  let cursor = 0;
+  for (;;) {
+    const page = await prisma.auditEvent.findMany({ where: { AND: [whereFor(filters), { id: { gt: cursor } }] }, orderBy: { id: "asc" }, take: pageSize });
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+    cursor = page[page.length - 1].id;
+  }
+});
+
 export const listAuditEvents = withPermission("audit.view", async (_user, filters: AuditFilters, limit: number = 500) =>
   prisma.auditEvent.findMany({ where: whereFor(filters), orderBy: { id: "desc" }, take: limit }),
 );

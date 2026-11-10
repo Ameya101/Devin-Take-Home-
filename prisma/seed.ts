@@ -33,43 +33,46 @@ const CUSTOMERS = [
 ];
 
 async function main() {
-  const users = await Promise.all(USERS.map((u) => prisma.user.create({ data: u })));
+  // Fixtures are inserted with a system actor and audited in the same transaction, like any other write.
+  const { users, customers, payments } = await prisma.$transaction(
+    async (tx) => {
+      const created = async <T extends { id: string }>(entityType: string, row: Promise<T>) => {
+        const after = await row;
+        await audit.record(tx, { actor: null, action: "seed.created", entityType, entityId: after.id, before: null, after });
+        return after;
+      };
+      const users = [];
+      for (const u of USERS) users.push(await created("User", tx.user.create({ data: u })));
+      const customers = [];
+      for (const name of CUSTOMERS) {
+        customers.push(await created("Customer", tx.customer.create({ data: { name, email: `${name.toLowerCase().replace(/[^a-z]+/g, ".")}@example.com` } })));
+      }
+      const now = Date.now();
+      const payments = [];
+      for (let i = 0; i < 80; i++) {
+        // Log-uniform between $5 and $4,000 so there is a realistic mix of small and large payments.
+        const amountCents = Math.round(Math.exp(Math.log(500) + rand() * (Math.log(400_000) - Math.log(500))));
+        payments.push(
+          await created(
+            "Payment",
+            tx.payment.create({
+              data: {
+                customerId: pick(customers).id,
+                amountCents,
+                currency: "USD",
+                status: rand() < 0.07 ? "failed" : "succeeded",
+                cardLast4: String(Math.floor(rand() * 10_000)).padStart(4, "0"),
+                createdAt: new Date(now - Math.floor(rand() * 90 * 24 * 3600 * 1000)),
+              },
+            }),
+          ),
+        );
+      }
+      return { users, customers, payments };
+    },
+    { timeout: 60_000 },
+  );
   const byEmail = Object.fromEntries(users.map((u) => [u.email, toSessionUser(u)]));
-
-  const customers = await Promise.all(
-    CUSTOMERS.map((name) =>
-      prisma.customer.create({ data: { name, email: `${name.toLowerCase().replace(/[^a-z]+/g, ".")}@example.com` } }),
-    ),
-  );
-
-  const now = Date.now();
-  const payments = [];
-  for (let i = 0; i < 80; i++) {
-    // Log-uniform between $5 and $4,000 so there is a realistic mix of small and large payments.
-    const amountCents = Math.round(Math.exp(Math.log(500) + rand() * (Math.log(400_000) - Math.log(500))));
-    payments.push(
-      await prisma.payment.create({
-        data: {
-          customerId: pick(customers).id,
-          amountCents,
-          currency: "USD",
-          status: rand() < 0.07 ? "failed" : "succeeded",
-          cardLast4: String(Math.floor(rand() * 10_000)).padStart(4, "0"),
-          createdAt: new Date(now - Math.floor(rand() * 90 * 24 * 3600 * 1000)),
-        },
-      }),
-    );
-  }
-
-  await prisma.$transaction((tx) =>
-    audit.record(tx, {
-      actor: null,
-      action: "system.seed",
-      entityType: "System",
-      entityId: "seed",
-      metadata: { users: users.length, customers: customers.length, payments: payments.length },
-    }),
-  );
 
   // Existing refunds go through the real service so they are audited like any other write.
   const succeeded = payments.filter((p) => p.status === "succeeded");

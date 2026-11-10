@@ -121,6 +121,7 @@ Route handlers: wrap with `withPermission` and adapt with `toRouteHandler` (see
      describe: (p) => `Override case …${p.caseId.slice(-6)} to ${p.decision}`,
      execute: (p, tx, { approver }) => applyOverride(tx, p, approver), // must audit its own writes
      onReject: (p, tx, { approver }) => markOverrideRejected(tx, p, approver),
+     onFailure: (p, tx, { approver }) => releaseOverride(tx, p, approver), // optional: undo reservations if execute() throws
    });
    ```
 
