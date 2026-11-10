@@ -50,3 +50,7 @@ shadow.db*
 
 # Mock payments processor record (see MOCK_PAYMENTS_LOG)
 .mock-payments*.jsonl
+
+# E2E artifacts
+/playwright-report
+/test-results

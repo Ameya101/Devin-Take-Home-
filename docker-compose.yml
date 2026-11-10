@@ -1,0 +1,41 @@
+# Production-like local run: `docker compose up --build` migrates, seeds (once) and starts the app on :3000.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: itk
+      POSTGRES_PASSWORD: itk # local demo only
+      POSTGRES_DB: itk
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U itk -d itk"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://itk:itk@db:5432/itk
+      AUTH_PROVIDER: dev
+      ALLOW_DEV_AUTH_IN_PRODUCTION: "true" # demo only: the passwordless picker; use AUTH_PROVIDER=oidc for real
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      SEED_IF_EMPTY: "true"
+      MOCK_PAYMENTS_LOG: /app/data/mock-payments.jsonl
+    ports:
+      - "3000:3000"
+    volumes:
+      - mockpayments:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
+  mockpayments:

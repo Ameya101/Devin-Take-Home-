@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.env
+*.db
+*.db-journal
+.mock-payments*.jsonl
+playwright-report
+test-results

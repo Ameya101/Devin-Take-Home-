@@ -35,6 +35,10 @@ const CUSTOMERS = [
 ];
 
 async function main() {
+  if (process.env.SEED_IF_EMPTY === "true" && (await prisma.user.count()) > 0) {
+    console.log("Database already seeded; skipping (SEED_IF_EMPTY=true)");
+    return;
+  }
   // Fixtures are inserted with a system actor and audited in the same transaction, like any other write.
   const { users, customers, payments } = await prisma.$transaction(
     async (tx) => {
