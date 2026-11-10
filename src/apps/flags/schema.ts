@@ -21,26 +21,26 @@ export const createFlagSchema = z.object({
     .regex(FLAG_KEY_PATTERN, "Key must be lowercase letters/digits separated by '.', '-' or '_' (e.g. checkout.new-payment-sheet)"),
   description: z.string().trim().min(10, "Description must be at least 10 characters").max(500),
   ownerTeam: z.enum(OWNER_TEAMS, { errorMap: () => ({ message: "Pick an owner team" }) }),
-});
+}).strict();
 export type CreateFlagInput = z.infer<typeof createFlagSchema>;
 
-export const envStateSchema = z.object({ enabled: z.boolean(), rolloutPercent: rolloutSchema });
+export const envStateSchema = z.object({ enabled: z.boolean(), rolloutPercent: rolloutSchema }).strict();
 
 export const directChangeFormSchema = z.object({
   flagId: z.string().min(1),
   environment: z.enum(DIRECT_ENVIRONMENTS),
   enabled: checkbox,
   rolloutPercent: rolloutField,
-});
+}).strict();
 
 export const prodChangeFormSchema = z.object({
   flagId: z.string().min(1),
   enabled: checkbox,
   rolloutPercent: rolloutField,
   reason: z.string().trim().max(500).optional(),
-});
+}).strict();
 
 export const killSwitchFormSchema = z.object({
   flagId: z.string().min(1),
   reason: z.string().trim().min(5, "Say why prod needs the kill switch (at least 5 characters)").max(500),
-});
+}).strict();
