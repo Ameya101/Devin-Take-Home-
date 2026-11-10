@@ -7,7 +7,8 @@ ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
 COPY package.json package-lock.json ./
 COPY scripts ./scripts
 COPY prisma ./prisma
-RUN npm ci
+# postinstall writes a .env with a random SESSION_SECRET; don't bake it into the image.
+RUN npm ci && rm -f .env
 
 FROM deps AS build
 COPY . .

@@ -63,9 +63,9 @@ All users are seeded and listed on `/login` (DEV ONLY, no password).
 
 1. **Large refund (maker-checker):** sign in as `agent@acme.test`. Open **Refunds**, pick a payment over $1,000, and issue a **$50** refund: it's processed immediately. Issue a **$900** refund: it goes to *pending approval*. Open **Approvals**: the agent sees it under "My requests" but can't approve it.
 2. Sign out and sign in as `approver@acme.test`. Under **Approvals → Waiting for me**, approve the $900 refund. It's issued through the payments adapter.
-3. **Feature flag in prod:** sign in as `eng@acme.test`. Open **Feature Flags**, pick a flag, change dev or staging directly, then request a prod change. Sign in as `eng2@acme.test` and approve it under **Approvals**. A prod kill switch request is marked URGENT.
+3. **Feature flag in prod:** sign in as `eng@acme.test`. Open **Feature flags**, pick a flag, change dev or staging directly, then request a prod change. Sign in as `eng2@acme.test` and approve it under **Approvals**. A prod kill switch request is marked URGENT.
 4. **Audit:** sign in as `admin@acme.test`. Open **Audit log**, expand a row to see the before/after diff, click **Verify integrity**, and export CSV.
-5. **Denied access:** as `viewer@acme.test`, open `/admin/audit`. You get a 403, and an `access_denied` event appears in the audit log.
+5. **Denied access:** as `viewer@acme.test`, open `/admin/audit`. You're sent to the Forbidden page, and an `access_denied` event appears in the audit log.
 
 ## Adding an app
 
