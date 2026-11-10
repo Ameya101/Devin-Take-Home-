@@ -27,7 +27,8 @@ export class RefundDeclinedError extends Error {}
  * The mock "processor's" own record of issued refunds: an append-only JSONL file, outside the database on
  * purpose (a rolled-back transaction does not undo a refund the processor already issued) and durable across
  * restarts. It is never rewritten or expired, so a missing key really means "never issued". A damaged line
- * (e.g. a crash mid-append) is skipped, and while one exists a missing key is reported as "unknown", not "not_found".
+ * (e.g. a crash mid-append) is skipped; while one exists a missing key is reported as "unknown", not "not_found",
+ * and new refunds are refused so a retry can't issue a refund that is hiding in the damaged line.
  */
 type IssuedRefund = { idempotencyKey: string; providerRefundId: string; issuedAt: string };
 
@@ -58,8 +59,13 @@ function appendIssued(record: IssuedRefund): void {
 
 export class MockPaymentsAdapter implements PaymentsAdapter {
   async refund(input: { paymentId: string; amountCents: number; currency: string; idempotencyKey: string }) {
-    const existing = readLog().issued.find((r) => r.idempotencyKey === input.idempotencyKey);
+    const { issued, damaged } = readLog();
+    const existing = issued.find((r) => r.idempotencyKey === input.idempotencyKey);
     if (existing) return { providerRefundId: existing.providerRefundId };
+    if (damaged > 0) {
+      // The key may be in a damaged record, so issuing now could refund twice. Refuse until the record is repaired.
+      throw new Error(`Processor record has ${damaged} damaged entr${damaged === 1 ? "y" : "ies"}; refusing to issue a refund that may already exist`);
+    }
     const providerRefundId = `re_mock_${input.idempotencyKey.slice(-12)}`;
     const record: IssuedRefund = { idempotencyKey: input.idempotencyKey, providerRefundId, issuedAt: new Date().toISOString() };
     appendIssued(record);

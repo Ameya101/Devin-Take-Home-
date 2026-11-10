@@ -167,14 +167,18 @@ describe("refund threshold routing", () => {
     expect(await new fresh.MockPaymentsAdapter().lookupRefund({ idempotencyKey: `${key}-other` })).toEqual({ status: "not_found" });
   });
 
-  it("a damaged processor record makes misses 'unknown' and keeps later records readable", async () => {
+  it("a damaged processor record makes misses 'unknown' and refuses new refunds, but retries stay idempotent", async () => {
     const { appendFileSync } = await import("node:fs");
     const log = process.env.MOCK_PAYMENTS_LOG!;
+    const key = `before-damage-${Date.now()}`;
+    const first = await new MockPaymentsAdapter().refund({ paymentId: "p", amountCents: 100, currency: "USD", idempotencyKey: key });
     appendFileSync(log, '{"idempotencyKey":"cut-off');
-    const key = `after-damage-${Date.now()}`;
-    await new MockPaymentsAdapter().refund({ paymentId: "p", amountCents: 100, currency: "USD", idempotencyKey: key });
+    expect(await new MockPaymentsAdapter().refund({ paymentId: "p", amountCents: 100, currency: "USD", idempotencyKey: key })).toEqual(first);
     expect(await new MockPaymentsAdapter().lookupRefund({ idempotencyKey: key })).toMatchObject({ status: "succeeded" });
-    expect(await new MockPaymentsAdapter().lookupRefund({ idempotencyKey: "never-issued" })).toMatchObject({ status: "unknown" });
+    await expect(
+      new MockPaymentsAdapter().refund({ paymentId: "p", amountCents: 100, currency: "USD", idempotencyKey: "cut-off" }),
+    ).rejects.toThrow(/damaged/);
+    expect(await new MockPaymentsAdapter().lookupRefund({ idempotencyKey: "cut-off" })).toMatchObject({ status: "unknown" });
 
     const agent = await makeUser("support_agent");
     const approver = await makeUser("finance_approver");
