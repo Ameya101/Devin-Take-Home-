@@ -21,6 +21,17 @@ jobs:
       issues: write
       id-token: write
     steps:
+      # Without a secret the action silently does nothing and shows green.
+      # Fail loudly instead so a "passed" check always means a real review ran.
+      - name: Check Claude secret is set
+        env:
+          HAS_SECRET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' || secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          if [ "$HAS_SECRET" != "true" ]; then
+            echo "::error::No review ran. Add repo secret CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
